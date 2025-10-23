@@ -997,6 +997,8 @@
       <iframe id="befragungsbogen-frame" src="/befragungsbogen/2-personen" title="Befragungsbogen" style="width:100%;height:70vh;border:0;border-radius:12px;background:white;"></iframe>
       <form id="befragungsbogen-send-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
         <input type="text" name="filename" placeholder="Dateiname (optional)" />
+        <input type="text" name="subject" placeholder="E-Mail Betreff" style="min-width:200px;" />
+        <textarea name="body" placeholder="E-Mail Beschreibung" style="min-width:300px;min-height:60px;resize:vertical;"></textarea>
         <button type="submit" class="btn-small">An Kooperationspartner senden</button>
       </form>
     </div>
@@ -1206,8 +1208,8 @@
         const win = frame?.contentWindow;
         
         let dataUrl;
-        if (win && typeof win.generatePDF === 'function'){
-          // Verwende die generatePDF Funktion aus dem iframe
+        if (win && typeof win.generatePDFForEmail === 'function'){
+          // Verwende die generatePDFForEmail Funktion aus dem iframe
           const pdfBlob = await win.generatePDFForEmail();
           if (pdfBlob) {
             dataUrl = await new Promise((resolve) => {
@@ -1248,6 +1250,17 @@
           console.log('Kunden-ID hinzugefügt:', selectedCustomerId);
         }
         
+        // Hole die Werte aus den neuen Feldern
+        const subjectField = formBF.querySelector('input[name="subject"]');
+        const bodyField = formBF.querySelector('textarea[name="body"]');
+        
+        const customSubject = subjectField ? subjectField.value.trim() : '';
+        const customBody = bodyField ? bodyField.value.trim() : '';
+        
+        // Verwende benutzerdefinierte Werte oder Fallback
+        const finalSubject = customSubject || 'Befragungsbogen';
+        const finalBody = customBody || 'Hallo,\n\nanbei befindet sich der Befragungsbogen.\n\nMit besten Grüßen';
+        
         const res = await fetch('/api/send-offer', { 
           method:'POST', 
           headers:{'Content-Type':'application/json'}, 
@@ -1255,8 +1268,8 @@
             to: 'befragungsbogen@helpcare.de', // Dummy-E-Mail für Befragungsbogen
             filename, 
             pdf_base64: dataUrl,
-            subject: 'Befragungsbogen',
-            body: 'Hallo,\n\nanbei befindet sich der Befragungsbogen.\n\nMit besten Grüßen',
+            subject: finalSubject,
+            body: finalBody,
             form_fields: formFields,  // Alle ausgefüllten Formularfelder (inkl. Kunden-ID)
             pdf_data: dataUrl  // Die generierte PDF-Datei
           }) 
