@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignaturApp - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>✍️ SignaturApp</h1>
+            <nav>
+                <button class="nav-btn active" onclick="showSection('templates')">Templates</button>
+                <button class="nav-btn" onclick="showSection('contracts')">Verträge</button>
+            </nav>
+        </header>
+
+        <!-- Templates Section -->
+        <section id="templates-section" class="section active">
+            <div class="section-header">
+                <h2>Contract Templates</h2>
+                <button class="btn btn-primary" onclick="openTemplateModal()">+ Template hochladen</button>
+            </div>
+            <div id="templates-list" class="grid"></div>
+        </section>
+
+        <!-- Contracts Section -->
+        <section id="contracts-section" class="section">
+            <div class="section-header">
+                <h2>Verträge</h2>
+                <button class="btn btn-primary" onclick="openContractModal()">+ Neuen Vertrag erstellen</button>
+            </div>
+            <div id="contracts-stats" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <strong>Statistik:</strong> 
+                <span id="total-contracts">0 Verträge</span> | 
+                <span id="signed-contracts">0 unterschrieben</span>
+            </div>
+            <div id="contracts-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Kunde</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Erstellt</th>
+                            <th>Unterschrieben</th>
+                            <th>Download</th>
+                        </tr>
+                    </thead>
+                    <tbody id="contracts-list">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Template Upload Modal -->
+    <div id="template-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTemplateModal()">&times;</span>
+            <h2>Template hochladen</h2>
+            <form id="template-form">
+                <div class="form-group">
+                    <label for="template-name">Name des Templates:</label>
+                    <input type="text" id="template-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="template-file">HTML-Datei:</label>
+                    <input type="file" id="template-file" accept=".html" required>
+                    <small>Die Datei muss <code>&lt;div id="signature-placeholder"&gt;&lt;/div&gt;</code> enthalten</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Hochladen</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Contract Creation Modal -->
+    <div id="contract-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeContractModal()">&times;</span>
+            <h2>Neuen Vertrag erstellen</h2>
+            <form id="contract-form">
+                <div class="form-group">
+                    <label for="contract-template">Template auswählen:</label>
+                    <select id="contract-template" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="customer-name">Kundenname:</label>
+                    <input type="text" id="customer-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="customer-email">Kunden-Email:</label>
+                    <input type="email" id="customer-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="variables">Variablen (JSON):</label>
+                    <textarea id="variables" rows="6" required>{
+  "vertragsnummer": "VERT-2024-001",
+  "datum": "01.01.2024",
+  "betrag": "1.000,00 €"
+}</textarea>
+                    <small>JSON-Format mit den Variablen aus Ihrem Template</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Vertrag erstellen & versenden</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
+

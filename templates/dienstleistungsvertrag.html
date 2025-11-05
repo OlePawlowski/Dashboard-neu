@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Dienstleistungsvertrag</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 1.5cm;
+    }
+    body {
+      font-family: "Arial", sans-serif;
+      font-size: 10pt;
+      color: #000;
+      position: relative;
+      line-height: 1.4;
+      max-width: 21cm;
+      margin: 10px auto;
+    }
+    .email-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    .email-table td {
+      vertical-align: top;
+      padding: 5px;
+    }
+    .email-table td p{
+      margin-top: 0.2rem;
+      margin-bottom: 0.2rem;
+    }
+    .email-box {
+      border: 1px solid #aaa;
+      padding: 10px 15px;
+      margin: 15px 0;
+    }
+    .title {
+      text-align: center;
+      font-size: 16pt;
+      font-weight: bold;
+      margin-top: 30px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 10pt;
+      margin-top: 3px;
+      line-height: 1.3;
+    }
+    .contract-number {
+      border: 1px solid #000;
+      padding: 4px 10px;
+      font-size: 10pt;
+      margin-top: 20px;
+      text-align: center;
+    }
+    .section {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .emphasis {
+      font-style: italic;
+      font-size: 10pt;
+      margin-top: 5px;
+    }
+    .bold {
+      font-weight: bold;
+    }
+    .page-number {
+      text-align: center;
+      font-size: 9pt;
+      color: #777;
+    }
+    h2 {
+      font-size: 12pt;
+      font-weight: bold;
+      color: #2c3e50;
+      margin: 15px 0 10px 0;
+      padding-bottom: 3px;
+      border-bottom: 1px solid #eee;
+    }
+    ul {
+      padding-left: 18px;
+      margin: 5px 0;
+    }
+    li {
+      margin-bottom: 5px;
+    }
+    .clause {
+      margin-bottom: 5px;
+      font-size: 10pt;
+    }
+    .clause-number {
+      font-weight: bold;
+    }
+    .page-break {
+      page-break-before: always;
+      margin-top: 1cm;
+    }
+    .signature-line {
+      width: 60%;
+      border-bottom: 1px solid #333;
+    }
+    .signature-label {
+      font-size: 10pt;
+      color: #666;
+    }
+    #signature-placeholder {
+    text-align: left; 
+    }
+  </style>
+</head>
+<body>
+
+<!-- Erste Seite -->
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <!-- Logo wurde entfernt für neutrale Version -->
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="title">Dienstleistungsvertrag</td>
+  </tr>
+  <tr>
+    <td align="center" class="clause">
+      über Erbringung von Betreuungsdienstleistungen und Dienstleistungen der hauswirtschaftlichen Versorgung mit Unterstützung in körperbezogenen Pflegemaßnahmen (Grundpflege)
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="contract-number">Auftrag: [Auftragsnummer] / [Datum]</td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="section" style="margin-top: 40px;">
+      zwischen dem Auftraggeber<br>
+      <strong>– nachfolgend AG genannt –</strong>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table email-box">
+  <tbody><tr>
+    <td>
+      <p><strong>Vorname &amp; Name:</strong> [Vorname Name]</p>
+      <p><strong>Straße &amp; Hausnummer:</strong> [Straße Hausnummer]</p>
+      <p><strong>PLZ Ort:</strong> [PLZ Ort]</p>
+      <p><strong>Telefon:</strong> [Telefon Kunde]</p>
+      <p><strong>E-Mail:</strong> [E-Mail Kunde]</p>
+      <p class="emphasis">(Rechnungsversand erfolgt an diese Adresse via E-Mail)</p>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="section">
+      und dem Dienstleistungserbringer<br>
+      <strong>– nachfolgend DE genannt –</strong>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table email-box">
+  <tbody><tr>
+    <td>
+      <p><strong>Dienstleistungserbringer:</strong> [Firmenname Partner]</p>
+      <p><strong>Straße, PLZ, Ort:</strong> [Adresse Partner]</p>
+      <p><strong>Telefon:</strong> [Telefon Partner]</p>
+      <p><strong>E-Mail:</strong> [E-Mail Partner]</p>
+      <p><strong>Identifikationsnummer:</strong> [Identifikationsnummer Partner]</p>
+      <p><strong>Handelsregister:</strong> [Handelsregisternummer Partner]</p>
+      <p><strong>USt-IdNr.:</strong> [Umsatzsteuer-Identifikationsnummer Partner]</p>
+      <p><strong>Vertr. durch den Geschäftsführer:</strong> [Name Geschäftsführer Partner]</p>
+      <p class="bold">Notfallkontakt (24 Stunden): [Notfalltelefon Partner]</p>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="section" style="font-size: 10.5pt;">
+      – Auftraggeber und Dienstleistungserbringer werden nachfolgend gemeinsam als <strong>„Parteien"</strong> und einzeln als <strong>„Partei"</strong> bezeichnet. –
+    </td>
+  </tr>
+  <tr>
+    <td align="center" class="section">
+      wird folgender Dienstleistungsvertrag geschlossen:
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="page-number">Seite 1 von 6</td>
+  </tr>
+</tbody></table>
+
+<!-- Seite 2 - Präambel -->
+<div class="page-break"></div>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>Präambel</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      [Firmenname Partner] erbringt haushaltsnahe Betreuungsleistungen für unterstützungsbedürftige Personen im privaten Haushalt. Die Leistungen werden durch qualifizierte Betreuungskräfte aus Mitgliedstaaten der Europäischen Union erbracht, insbesondere im Rahmen der gesetzlich zulässigen Entsendung gemäß EU-Recht.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      Die Bedarfsermittlung, Beratung sowie die Auswahl geeigneter Betreuungskräfte erfolgen über die HelpCare GmbH mit Sitz in Deutschland, die mit [Firmenname Partner] als Partnerunternehmen zusammenarbeitet.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      Ziel der Betreuung ist es, den Alltag der betreuten Person verlässlich zu begleiten, individuelle Unterstützung im Haushalt zu leisten und so Lebensqualität sowie Selbstständigkeit bestmöglich zu erhalten.
+    </td>
+  </tr>
+</tbody></table>
+
+<!-- § 1 Vertragsgegenstand -->
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 1 Vertragsgegenstand</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Gegenstand dieses Vertrages ist die Erbringung haushaltsnaher Unterstützungsleistungen durch Betreuungskräfte, die im Rahmen eines Dienstleistungsverhältnisses von [Firmenname Partner] entsendet werden.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Die Betreuungskraft erbringt folgende Leistungen:
+      <ul>
+        <li>Hilfen bei der Körperpflege, Mobilität und Ernährung (Grundpflege)</li>
+        <li>Hauswirtschaftliche Versorgung (z.B. Reinigung, Kochen, Einkaufen, Wäsche)</li>
+        <li>Alltagsbegleitung (z.B. Gespräche, Spaziergänge, Strukturierung des Tagesablaufs)</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Medizinische Behandlungsleistungen gemäß SGB V (z. B. Medikamentengabe, Injektionen, Verbandswechsel) sind ausdrücklich ausgeschlossen. Sofern die Medikamente jedoch vom Pflegedienst vorbereitet und bereitgestellt wurden, darf die Betreuungskraft der zu betreuenden Person diese gemäß Anweisung des Pflegedienstes aushändigen.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Die Betreuungskraft steht zur Verfügung, jedoch nicht in ständiger Bereitschaft. Arbeitszeiten, Ruhepausen und Schlafenszeiten richten sich nach den üblichen arbeitsrechtlichen Standards.
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="page-number">Seite 2 von 6</td>
+  </tr>
+</tbody></table>
+
+<!-- Seite 3 - § 2 -->
+<div class="page-break"></div>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 2 Vertragsbeginn, Laufzeit, Kündigung und Widerrufsrecht</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Der Vertrag beginnt zum Datum des Leistungsbeginns, wie im Betreuungsplan angegeben, und wird auf unbestimmte Zeit geschlossen.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Beide Vertragsparteien können den Vertrag mit einer Frist von 7 Tagen zum Monatsende in Textform kündigen, z. B. per E-Mail an [E-Mail Partner] + team@helpcare.de.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Der Vertrag endet am 7 Tag nach dem Tod der betreuten Person oder nach deren dauerhafter stationärer Unterbringung.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Bei Krankenhaus- oder Kurzzeitpflegeaufenthalten ruht der Vertrag. Der AG ist verpflichtet, dies dem DE unverzüglich mitzuteilen.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(5)</span> Bei Zahlungsverzug von mehr als 5 Werktagen nach Zugang einer Mahnung kann der DE nach schriftlicher Ankündigung mit einer Frist von 3 Werktagen die Dienstleistung vorübergehend einstellen.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(6)</span> Widerrufsrecht bei Fernabsatzverträgen:
+      <ul>
+        <li>Sofern der Vertrag ausschließlich per Telefon, E-Mail oder auf anderem Fernweg zustande kommt, steht dem AG ein gesetzliches Widerrufsrecht von 14 Tagen ab Vertragsabschluss zu.</li>
+        <li>Der Widerruf ist formfrei, z. B. per E-Mail an [E-Mail Partner] + team@helpcare.de zu richten.</li>
+        <li>Das Widerrufsrecht erlischt vorzeitig, wenn der AG ausdrücklich verlangt, dass der DE mit der Leistung vor Ablauf der Widerrufsfrist beginnt, und die Leistung vollständig erbracht wurde.</li>
+      </ul>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 3 Pflichten des Dienstleisters (DE)</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Der DE stellt sicher, dass die Betreuungskräfte ordnungsgemäß sozialversichert sind und entweder bei ihm angestellt oder als rechtmäßig selbstständig tätig sind.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Der DE sorgt für die Vorlage einer gültigen A1-Bescheinigung oder Versicherungsnachweis sowie weiterer Nachweise über die gesetzeskonforme Entsendung nach EU-Recht.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Der DE verpflichtet sich zur Einhaltung aller gesetzlichen Vorschriften, insbesondere des Mindestlohngesetzes, des Arbeitnehmer-Entsendegesetzes sowie der EU-Entsenderichtlinie.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Der DE sorgt für eine gültige Krankenversicherung für jede Betreuungskraft.
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="page-number">Seite 3 von 6</td>
+  </tr>
+</tbody></table>
+
+<!-- Seite 4 - § 4-5 -->
+<div class="page-break"></div>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 4 Pflichten des Auftraggebers (AG)</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Der AG stellt der Betreuungskraft ein hygienisches Einzelzimmer kostenfrei zur Verfügung.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Der AG sorgt für die tägliche Verpflegung der Betreuungskraft oder leistet alternativ eine wöchentliche Verpflegungspauschale in Höhe von 50 €.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Der AG verpflichtet sich, während der Vertragslaufzeit und bis zu 12 Monate nach deren Beendigung weder direkt noch indirekt eine vom DE vermittelte Betreuungskraft abzuwerben oder ohne Zustimmung des DE zu beschäftigen. Dies umfasst insbesondere auch jede Form der mittelbaren Beauftragung oder Umgehung über Dritte (z. B. Verwandte, Bekannte, andere Agenturen). Die Geltendmachung darüber hinausgehender Schadensersatzansprüche bleibt unberührt.
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 5 Vergütung und Abrechnung</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Die Vergütung beträgt [Betrag] pro Monat (Monatstarif(€)/ 30 Tage) gemäß individuellem Angebot. Die Abrechnung erfolgt taggenau, mit einem Tagessatz von [Tagessatz].
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Die Rechnungsstellung erfolgt elektronisch per E-Mail an die vom Auftraggeber benannte Adresse. Die Erstabrechnung erfolgt anteilig ab Leistungsbeginn, danach jeweils zum 1. Kalendertag des Monats auf Basis der vereinbarten Pauschale/Tagessätze. Abweichungen (z. B. Feiertagszuschläge, Zusatzleistungen, Reisekosten) werden mit der nächsten Rechnung ausgeglichen. Änderungen der Rechnungs- oder E-Mail-Adresse sind unverzüglich mitzuteilen.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Der Rechnungsbetrag ist innerhalb von 7 Kalendertagen nach Rechnungsdatum ohne Abzug auf das in der jeweiligen Rechnung angegebene Konto zu leisten.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Zusatzleistungen (z. B. Fahrerlaubnis, Betreuung einer zweiten Person) werden separat berechnet, sofern sie nicht im Angebot ausgewiesen sind.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(5)</span> Für folgende Feiertage mit Betreuung fällt ein Zuschlag von 100 % des durchschnittlichen Tagessatzes an, bezogen auf die Monatspauschale: Heiligenabend (24.12), 1.Weihnachtsfeiertag (25.12), 2.Weihnachtsfeiertag (26.12), Neujahr (01.01), Heilige 3 Könige (06.01), Karfreitag, Ostersonntag, Ostermontag, Tag der Arbeit (01.05.), Tag der deutschen Einheit (03.10), Allerheiligen (01.11.).
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(6)</span> Daneben erstattet der AG dem DE die Fahrkosten pauschal durch Zahlung eines Betrages in Höhe von 200 Euro (für An- und Abreise) immer bei Ankunft neuer Betreuungskraft. Die Fahrkosten werden in der Rechnung gestellt.
+    </td>
+  </tr>
+    </tbody></table>
+    <table class="email-table">
+  <tbody><tr>
+    <td align="center" class="page-number">Seite 4 von 6</td>
+  </tr>
+</tbody></table>
+
+<!-- Seite 5 - § 6-8 -->
+<div class="page-break"></div>
+  <tbody><table>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(7)</span> Sollte die zu betreuende Person regelmäßig Unterstützung während der Nachtstunden benötigen, verpflichtet sich der AG, den DE hierüber zu informieren. Der DE behält sich das Recht vor, zusätzliche Gebühren in Höhe von mindestens 10€/Nachtschicht zu erheben.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(8)</span> Der erste Tag, an dem die Betreuungskraft des DE im Wohnbereich des AG eintrifft und der letzte Tag der Dienstleistungerbringung, an dem die Betreuungskraft des DE den Wohnbereich des AG verlässt, werden als voller Dienstleistungstag berechnet.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(9)</span> Bei vorzeitiger Abreise, Krankheit, Tod oder Wechselbedarf trägt der AG die anfallenden Reisekosten für Ersatzkräfte, es sei denn, der Ausfall ist auf grobes Verschulden des DE zurückzuführen.
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 6 Leistungsunterbrechung und Ersatz</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Sollte die ursprünglich entsendete Betreuungskraft aus wichtigen Gründen (z. B. Krankheit, familiäre Umstände, Unstimmigkeiten) den Einsatz abbrechen, bemüht sich der DE, innerhalb von 3 Werktagen eine geeignete Ersatzkraft anzubieten. Ein verbindlicher Anspruch auf Ersatz besteht nicht.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Die mit der Ersatzentsendung verbundenen Kosten (z. B. An- und Abreise, Zwischenübernachtung) trägt der DE.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Ist keine Ersatzkraft verfügbar, informiert der DE den AG unverzüglich. Beide Seiten stimmen dann gemeinsam eine Übergangslösung ab.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Die Übernahme der Kosten eines fremden Dienstes als Ausfallersatz oder persönlich geltend gemachte Kosten durch den DE ist nicht möglich.
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 7 Haftung</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Der DE haftet nur für Schäden, die durch vorsätzliches oder grob fahrlässiges Verhalten verursacht wurden.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Für Schäden durch die Betreuungskraft haftet der DE nur, wenn diese auf grober Fahrlässigkeit oder Vorsatz beruhen. Die Betreuungskraft handelt auf eigene Verantwortung.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Der AG verpflichtet sich, Schäden oder Unregelmäßigkeiten dem DE unverzüglich schriftlich anzuzeigen. Eine verspätete Meldung kann zum Ausschluss von Ersatzansprüchen führen.
+    </td>
+  </tr>
+
+    <table class="email-table">
+  <tbody><tr>
+    <td align="center" class="page-number">Seite 5 von 6</td>
+  </tr>
+</tbody></table>
+
+<div class="page-break"></div>
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 8 Datenschutz und Vertraulichkeit</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Beide Vertragsparteien verpflichten sich zur Einhaltung der geltenden Datenschutzgesetze, insbesondere der DSGVO. Daten dürfen nur zur Vertragserfüllung verwendet und nicht an unbefugte Dritte weitergegeben werden.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Der DE behandelt alle Informationen über die betreute Person und den AG streng vertraulich – auch über die Vertragsdauer hinaus.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Der AG hat jederzeit das Recht auf Auskunft, Berichtigung, Löschung oder Einschränkung der Verarbeitung gemäß Art. 15 bis 18 DSGVO. Anfragen sind zu richten an: [Firmenname Partner].
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Beide Seiten treffen angemessene technische und organisatorische Maßnahmen zum Schutz personenbezogener Daten.
+    </td>
+  </tr>
+</tbody></table>
+
+<!-- Seite 6 - § 9 und Unterschriften -->
+
+<table class="email-table">
+  <tbody><tr>
+    <td>
+      <h2>§ 9 Schlussbestimmungen</h2>
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(1)</span> Änderungen und Ergänzungen dieses Vertrages bedürfen der Textform. Mündliche Nebenabreden sind nicht verbindlich.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(2)</span> Sollte eine Bestimmung dieses Vertrages ganz oder teilweise unwirksam sein oder werden, so wird die Wirksamkeit der übrigen Bestimmungen hiervon nicht berührt. Anstelle der unwirksamen Regelung gilt eine Regelung als vereinbart, die dem wirtschaftlichen Zweck am nächsten kommt.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(3)</span> Vertragssprache ist Deutsch. Es gilt das Recht desjenigen Landes, in dem die Leistung erbracht wird.
+    </td>
+  </tr>
+  <tr>
+    <td class="clause">
+      <span class="clause-number">(4)</span> Die Vertragsparteien bemühen sich im Falle von Unstimmigkeiten um eine einvernehmliche Lösung. Sollte keine Einigung erzielt werden, ist – soweit gesetzlich zulässig – der Sitz des Dienstleistungserbringers maßgeblich für den Gerichtsstand.
+    </td>
+  </tr>
+</tbody></table>
+
+<!-- Unterschriftsbereich -->
+<table class="email-table">
+  <tbody><tr>
+    <td style="padding-top: 30px;">
+      <p>Ort, Datum: [Ort], den [Datum]</p>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table" style="margin-top: 17px;">
+  <tbody><tr>
+    <td width="40%">
+      <!-- Signatur-Platzhalter für Auftraggeber -->
+      <div id="signature-placeholder"></div>
+      <div class="signature-line"></div>
+      <div class="signature-label">Auftraggeber</div>
+    </td>
+    <td width="20%"></td>
+    <td width="40%">
+      <!-- Signatur-Platzhalter für Dienstleistungserbringer -->
+      <div id="signature-placeholder-partner"></div>
+      <div class="signature-line"></div>
+      <div class="signature-label">Dienstleistungserbringer</div>
+    </td>
+  </tr>
+</tbody></table>
+
+<table class="email-table">
+  <tbody><tr>
+    <td align="center" class="page-number">Seite 6 von 6</td>
+  </tr>
+</tbody></table>
+
+</body>
+</html>

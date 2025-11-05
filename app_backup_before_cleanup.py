@@ -27,17 +27,6 @@ from email import encoders
 # 🔃 .env laden (lokal)
 load_dotenv()
 
-# Hilfsfunktion für deutsches Währungsformat
-def format_currency(value):
-    """Formatiert eine Zahl im deutschen Währungsformat (z.B. 3.500,00 €)"""
-    if value is None or value == '':
-        return ''
-    # Konvertiere zu Float und formatiere mit 2 Nachkommastellen
-    formatted = f"{value:,.2f}"
-    # Ersetze Punkt durch Komma für Dezimalstelle und Komma durch Punkt für Tausender
-    formatted = formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
-    return f"{formatted} €"
-
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback")
 
@@ -1882,36 +1871,11 @@ def save_customer_from_email(email_address, customer_name=None, offer_data=None,
     
     import json
     
-    # Telefonnummer (aus Angebot) extrahieren
-    phone_from_offer = None
-    try:
-        if offer_data and isinstance(offer_data, dict):
-            phone_from_offer = (offer_data.get('sms_number') or offer_data.get('phone') or '').strip() or None
-    except Exception:
-        phone_from_offer = None
-    
     # Prüfen ob Kunde bereits existiert
     existing_customer = Customer.query.filter_by(email=email_address).first()
     if existing_customer:
         # Letzten Kontakt aktualisieren
         existing_customer.last_contact = datetime.datetime.utcnow()
-        
-        # Name auffüllen/aktualisieren, wenn sinnvoll
-        try:
-            if customer_name:
-                # Aktualisiere, falls Name leer ist oder nur der Teil vor @ verwendet wurde
-                fallback_name = (email_address.split('@')[0] if email_address else '')
-                if not existing_customer.name or existing_customer.name == fallback_name:
-                    existing_customer.name = customer_name
-        except Exception:
-            pass
-        
-        # Telefonnummer übernehmen/aktualisieren
-        try:
-            if phone_from_offer:
-                existing_customer.phone = phone_from_offer
-        except Exception:
-            pass
         
         # Angebot-Daten hinzufügen/aktualisieren
         if offer_data:
@@ -1943,8 +1907,7 @@ def save_customer_from_email(email_address, customer_name=None, offer_data=None,
     # Neuen Kunden erstellen
     customer = Customer(
         name=customer_name or email_address.split('@')[0],  # Fallback: Teil vor @
-        email=email_address,
-        phone=phone_from_offer
+        email=email_address
     )
     
     # Angebot-Daten hinzufügen
@@ -2051,8 +2014,6 @@ def kooperationspartner_detail(partner_id):
                 partner.managing_director = data['managing_director'].strip()
             if 'emergency_phone' in data:
                 partner.emergency_phone = data['emergency_phone'].strip()
-            if 'provision' in data:
-                partner.provision = str(data['provision']).strip()
             
             db.session.commit()
             return jsonify(partner.to_dict())
@@ -2093,8 +2054,6 @@ def update_kooperationspartner(partner_id):
             partner.managing_director = data['managing_director'].strip()
         if 'emergency_phone' in data:
             partner.emergency_phone = data['emergency_phone'].strip()
-        if 'provision' in data:
-            partner.provision = str(data['provision']).strip()
         
         db.session.commit()
         return jsonify(partner.to_dict())
@@ -2119,10 +2078,10 @@ def get_partner_kooperationsvertraege(partner_id):
         return jsonify({"error": "Nicht eingeloggt"}), 401
     
     try:
-        # Nur Verträge holen, bei denen der Partner der Receiver ist
-        # (denn HelpCare ist immer der Sender)
+        # Alle Verträge holen, bei denen der Partner entweder Sender oder Receiver ist
         contracts = Kooperationsvertrag.query.filter(
-            Kooperationsvertrag.receiver_partner_id == partner_id
+            (Kooperationsvertrag.sender_partner_id == partner_id) | 
+            (Kooperationsvertrag.receiver_partner_id == partner_id)
         ).order_by(Kooperationsvertrag.created_at.desc()).all()
         
         return jsonify([contract.to_dict() for contract in contracts])
@@ -2289,14 +2248,11 @@ def generate_kooperationsvertrag_pdf(contract_id):
             html_doc = HTML(string=html_content)
             css = CSS(string='@page { size: A4; margin: 1.5cm; }', font_config=font_config)
             
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
             # PDF-Dateiname generieren
             pdf_filename = f"kooperationsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
             
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
+            html_doc.write_pdf(pdf_path, stylesheets=[css], font_config=font_config)
             
             # Contract aktualisieren
             contract.pdf_filename = pdf_filename
@@ -2321,28 +2277,12 @@ def send_kooperationsvertrag_docuseal(contract_id):
         return jsonify({"error": "Nicht eingeloggt"}), 401
     
     contract = Kooperationsvertrag.query.get_or_404(contract_id)
+    sender_partner = Kooperationspartner.query.get(contract.sender_partner_id)
+    receiver_partner = Kooperationspartner.query.get(contract.receiver_partner_id)
     
-    # Debug-Ausgabe
-    print(f"🔍 DEBUG: Kooperationsvertrag {contract_id}")
-    print(f"   Sender Partner ID: {contract.sender_partner_id}")
-    print(f"   Receiver Partner ID: {contract.receiver_partner_id}")
-    
-    # Partner laden - mit get_or_404 für bessere Fehlermeldung
-    try:
-        sender_partner = Kooperationspartner.query.get_or_404(contract.sender_partner_id)
-        print(f"✅ Sender Partner gefunden: {sender_partner.name}")
-    except Exception as e:
-        print(f"❌ Fehler beim Laden des Sender Partners: {e}")
-        return jsonify({"error": f"Sender Partner (ID: {contract.sender_partner_id}) nicht gefunden"}), 404
-    
-    try:
-        receiver_partner = Kooperationspartner.query.get_or_404(contract.receiver_partner_id)
-        print(f"✅ Receiver Partner gefunden: {receiver_partner.name}")
-    except Exception as e:
-        print(f"❌ Fehler beim Laden des Receiver Partners: {e}")
-        return jsonify({"error": f"Receiver Partner (ID: {contract.receiver_partner_id}) nicht gefunden"}), 404
+    if not sender_partner or not receiver_partner:
+        return jsonify({"error": "Sender oder Receiver Partner nicht gefunden"}), 404
 
-    # PDF generieren falls noch nicht vorhanden
     if not contract.pdf_filename:
         try:
             # PDF generieren durch direkten Aufruf der Logik
@@ -2350,16 +2290,15 @@ def send_kooperationsvertrag_docuseal(contract_id):
             with open(template_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
             
-            # Variablen ersetzen - WICHTIG: receiver_partner ist der Dienstleister!
+            # Variablen ersetzen
             replacements = {
-                '[Firmenname des Dienstleisters]': receiver_partner.company_name or receiver_partner.name,
-                '[Straße]': receiver_partner.street_address.split(',')[0] if receiver_partner.street_address else '',
-                '[PLZ]': receiver_partner.street_address.split(',')[1].strip().split(' ')[0] if receiver_partner.street_address and ',' in receiver_partner.street_address else '',
-                '[Ort]': receiver_partner.street_address.split(',')[1].strip().split(' ')[1] if receiver_partner.street_address and ',' in receiver_partner.street_address and len(receiver_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
+                '[Firmenname des Dienstleisters]': sender_partner.company_name or sender_partner.name,
+                '[Straße]': sender_partner.street_address.split(',')[0] if sender_partner.street_address else '',
+                '[PLZ]': sender_partner.street_address.split(',')[1].strip().split(' ')[0] if sender_partner.street_address and ',' in sender_partner.street_address else '',
+                '[Ort]': sender_partner.street_address.split(',')[1].strip().split(' ')[1] if sender_partner.street_address and ',' in sender_partner.street_address and len(sender_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
                 '[Land]': 'Deutschland',
-                '[Vertretungsberechtigte]': receiver_partner.managing_director or '',
-                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                '[Provision]': (receiver_partner.provision or '').strip()
+                '[Vertretungsberechtigte]': sender_partner.managing_director or '',
+                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y')
             }
             
             # Alle Variablen ersetzen
@@ -2374,14 +2313,11 @@ def send_kooperationsvertrag_docuseal(contract_id):
             html_doc = HTML(string=html_content)
             css = CSS(string='@page { size: A4; margin: 1.5cm; }', font_config=font_config)
             
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
             # PDF-Dateiname generieren
             pdf_filename = f"kooperationsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
             
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
+            html_doc.write_pdf(pdf_path, stylesheets=[css], font_config=font_config)
             
             # Contract aktualisieren
             contract.pdf_filename = pdf_filename
@@ -2452,25 +2388,23 @@ def download_kooperationsvertrag_pdf(contract_id):
 def sign_kooperationsvertrag(contract_id):
     """Zeigt den Kooperationsvertrag zur Signatur an"""
     contract = Kooperationsvertrag.query.get_or_404(contract_id)
-    # Für die Anzeige müssen die Daten des Dienstleisters (Empfänger) verwendet werden
-    receiver_partner = Kooperationspartner.query.get(contract.receiver_partner_id)
+    sender_partner = Kooperationspartner.query.get(contract.sender_partner_id)
     
     # Lade Template
     template_path = os.path.join(os.path.dirname(__file__), 'templates', 'kooperationsvertrag.html')
     with open(template_path, 'r', encoding='utf-8') as f:
         html_content = f.read()
     
-    # Ersetze Variablen (Empfänger = Dienstleister)
-    if receiver_partner:
+    # Ersetze Variablen
+    if sender_partner:
         replacements = {
-            '[Firmenname des Dienstleisters]': receiver_partner.company_name or receiver_partner.name,
-            '[Straße]': receiver_partner.street_address.split(',')[0] if receiver_partner.street_address else '',
-            '[PLZ]': receiver_partner.street_address.split(',')[1].strip().split(' ')[0] if receiver_partner.street_address and ',' in receiver_partner.street_address else '',
-            '[Ort]': receiver_partner.street_address.split(',')[1].strip().split(' ')[1] if receiver_partner.street_address and ',' in receiver_partner.street_address and len(receiver_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
+            '[Firmenname des Dienstleisters]': sender_partner.company_name or sender_partner.name,
+            '[Straße]': sender_partner.street_address.split(',')[0] if sender_partner.street_address else '',
+            '[PLZ]': sender_partner.street_address.split(',')[1].strip().split(' ')[0] if sender_partner.street_address and ',' in sender_partner.street_address else '',
+            '[Ort]': sender_partner.street_address.split(',')[1].strip().split(' ')[1] if sender_partner.street_address and ',' in sender_partner.street_address and len(sender_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
             '[Land]': 'Deutschland',
-            '[Vertretungsberechtigte]': receiver_partner.managing_director or '',
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Provision]': (receiver_partner.provision or '').strip()
+            '[Vertretungsberechtigte]': sender_partner.managing_director or '',
+            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y')
         }
         
         for placeholder, value in replacements.items():
@@ -2527,13 +2461,6 @@ def dienstleistungsvertraege():
         try:
             # Kunde laden für Ort
             customer = Customer.query.get(customer_id)
-            if not customer:
-                return jsonify({"error": "Kunde nicht gefunden"}), 404
-            
-            # Partner validieren
-            partner = Kooperationspartner.query.get(kooperationspartner_id)
-            if not partner:
-                return jsonify({"error": f"Kooperationspartner mit ID {kooperationspartner_id} nicht gefunden. Bitte einen gültigen Partner auswählen."}), 404
             
             contract = Dienstleistungsvertrag(
                 customer_id=customer_id,
@@ -2616,19 +2543,19 @@ def generate_contract_pdf(contract_id):
             '[Vorname Name]': customer.name,
             '[Straße Hausnummer]': customer.street_address or '',
             '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name or '',
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+            '[Telefon]': customer.phone or '',
+            '[E-Mail]': customer.email or '',
+            '[Firmenname]': partner.company_name or partner.name,
+            '[Adresse]': partner.street_address or '',
+            '[Telefon]': partner.phone or '',
+            '[E-Mail]': partner.email or '',
+            '[Identifikationsnummer]': partner.identification_number or '',
+            '[Handelsregisternummer]': partner.commercial_register or '',
+            '[Umsatzsteuer-Identifikationsnummer]': partner.vat_id or '',
+            '[Name Geschäftsführer]': partner.managing_director or '',
+            '[Notfalltelefon]': partner.emergency_phone or '',
+            '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+            '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
             '[Ort]': customer.city or '',
             '[Partnerfirma]': partner.partner_company or partner.name
         }
@@ -2708,19 +2635,19 @@ def send_contract_for_signature(contract_id):
                 '[Vorname Name]': customer.name,
                 '[Straße Hausnummer]': customer.street_address or '',
                 '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                '[Telefon Kunde]': customer.phone or '',
-                '[E-Mail Kunde]': customer.email or '',
-                '[Firmenname Partner]': partner.company_name or partner.name,
-                '[Adresse Partner]': partner.street_address or '',
-                '[Telefon Partner]': partner.phone or '',
-                '[E-Mail Partner]': partner.email or '',
-                '[Identifikationsnummer Partner]': partner.identification_number or '',
-                '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+                '[Telefon]': customer.phone or '',
+                '[E-Mail]': customer.email or '',
+                '[Firmenname]': partner.company_name or partner.name,
+                '[Straße, PLZ, Ort]': partner.street_address or '',
+                '[Telefon]': partner.phone or '',
+                '[E-Mail]': partner.email or '',
+                '[Identifikationsnummer]': partner.identification_number or '',
+                '[Handelsregister]': partner.commercial_register or '',
+                '[USt-IdNr.]': partner.vat_id or '',
+                '[Vertr. durch den Geschäftsführer]': partner.managing_director or '',
+                '[Notfallkontakt]': partner.emergency_phone or '',
+                '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+                '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
                 '[Ort]': customer.city or ''
             }
             
@@ -2751,31 +2678,18 @@ def send_contract_for_signature(contract_id):
         except Exception as e:
             return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
     
-    # E-Mail an KUNDE senden
-    customer_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/customer"
+    # E-Mail mit Signatur-Link senden
+    signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign"
     success, error_msg = send_signature_email(
         contract_id=contract_id,
         customer_email=customer.email,
         customer_name=customer.name,
         contract_type="dienstleistungsvertrag",
-        signature_url=customer_signature_url
+        signature_url=signature_url
     )
     
     if not success:
-        return jsonify({"error": f"E-Mail-Versand an Kunde Fehler: {error_msg}"}), 500
-    
-    # E-Mail an PARTNER senden
-    partner_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/partner"
-    success, error_msg = send_signature_email(
-        contract_id=contract_id,
-        customer_email=partner.email,
-        customer_name=partner.name or partner.company_name,
-        contract_type="dienstleistungsvertrag",
-        signature_url=partner_signature_url
-    )
-    
-    if not success:
-        return jsonify({"error": f"E-Mail-Versand an Partner Fehler: {error_msg}"}), 500
+        return jsonify({"error": f"E-Mail-Versand Fehler: {error_msg}"}), 500
     
     # Status aktualisieren
     contract.status = 'sent'
@@ -2783,8 +2697,198 @@ def send_contract_for_signature(contract_id):
     
     return jsonify({
         "success": True,
-        "message": "Vertrag erfolgreich zur Signatur an beide Parteien gesendet"
+        "message": "Vertrag erfolgreich zur Signatur per E-Mail gesendet"
     })
+
+@app.route('/docusign-test')
+def docusign_test_page():
+    """Test-Seite für DocuSign API"""
+    return render_template('zoho_test.html')
+
+# Test-Funktion für Zoho Sign (ohne Authentifizierung für Tests)
+@app.route('/api/test-zoho-sign', methods=['GET'])
+def test_zoho_sign():
+    """Test-Funktion für Zoho Sign API"""
+    try:
+        # Token testen
+        access_token = get_zoho_access_token()
+        if not access_token:
+            return jsonify({"error": "Zoho Access Token fehlt"}), 400
+        
+        # Einfacher API-Test mit multipart/form-data
+        api_url = 'https://sign.zoho.eu/api/v1/requests'
+        headers = {
+            'Authorization': f'Zoho-oauthtoken {access_token}'
+        }
+        
+        test_data = {}
+        
+        # Test mit echter Datei
+        test_file_content = b"Test PDF Content for Zoho Sign API"
+        test_files = {
+            'file': ('test.pdf', test_file_content, 'application/pdf')
+        }
+        
+        print(f"🔍 DEBUG: Teste Zoho Sign API...")
+        print(f"🔍 DEBUG: URL: {api_url}")
+        print(f"🔍 DEBUG: Headers: {headers}")
+        print(f"🔍 DEBUG: Data: {test_data}")
+        print(f"🔍 DEBUG: Files: test.pdf ({len(test_file_content)} bytes)")
+        
+        # Test mit Datei-Upload
+        response = requests.post(api_url, headers=headers, data=test_data, files=test_files, timeout=30)
+        
+        print(f"🔍 DEBUG: Response Status: {response.status_code}")
+        print(f"🔍 DEBUG: Response Text: {response.text}")
+        
+        return jsonify({
+            "status": response.status_code,
+            "response": response.text,
+            "success": response.status_code < 300,
+            "test_data": test_data
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Test fehlgeschlagen: {str(e)}"}), 500
+
+# Variable replacements für Dienstleistungsvertrag
+def get_dienstleistungsvertrag_replacements(contract, customer, partner):
+    """Generiert alle Platzhalter-Ersetzungen für Dienstleistungsvertrag"""
+    return {
+                '[Auftragsnummer]': contract.contract_number,
+                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
+                '[Vorname Name]': customer.name,
+                '[Straße Hausnummer]': customer.street_address or '',
+                '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
+                '[Telefon]': customer.phone or '',
+                '[E-Mail]': customer.email or '',
+                '[Firmenname]': partner.company_name or partner.name,
+                '[Straße, PLZ, Ort]': partner.street_address or '',
+                '[Telefon]': partner.phone or '',
+                '[E-Mail]': partner.email or '',
+                '[Identifikationsnummer]': partner.identification_number or '',
+                '[Handelsregister]': partner.commercial_register or '',
+                '[USt-IdNr.]': partner.vat_id or '',
+                '[Vertr. durch den Geschäftsführer]': partner.managing_director or '',
+                '[Notfallkontakt]': partner.emergency_phone or '',
+                '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+                '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+                '[Ort]': customer.city or ''
+            }
+            
+            # Alle Variablen ersetzen
+            for placeholder, value in replacements.items():
+                html_content = html_content.replace(placeholder, str(value))
+            
+            # PDF generieren
+            from weasyprint import HTML, CSS
+            from weasyprint.text.fonts import FontConfiguration
+            
+            font_config = FontConfiguration()
+            html_doc = HTML(string=html_content)
+            css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
+            
+            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
+            
+            # PDF speichern
+            pdf_filename = f"dienstleistungsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
+            
+            with open(pdf_path, 'wb') as f:
+                f.write(pdf_bytes)
+            
+            # In Datenbank speichern
+            contract.pdf_filename = pdf_filename
+            db.session.commit()
+        except Exception as e:
+            return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
+    
+    try:
+        # PDF-Datei laden
+        pdf_path = os.path.join(UPLOAD_FOLDER, contract.pdf_filename)
+        if not os.path.exists(pdf_path):
+            return jsonify({"error": "PDF-Datei nicht gefunden"}), 404
+        
+        with open(pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
+        
+        # Zoho Sign API - Korrekte multipart/form-data Implementierung
+        access_token = get_zoho_access_token()
+        if not access_token:
+            return jsonify({"error": "Zoho Access Token fehlt"}), 400
+            
+        api_url = 'https://sign.zoho.eu/api/v1/requests'
+        headers = {
+            'Authorization': f'Zoho-oauthtoken {access_token}'
+            # Content-Type wird automatisch für multipart/form-data gesetzt
+        }
+        
+        # Request-Daten für Zoho Sign (nur Datei-Upload)
+        request_data = {}
+        
+        # Datei für Upload
+        files = {
+            'file': (contract.pdf_filename, pdf_bytes, 'application/pdf')
+        }
+        
+        print(f"🔍 DEBUG: Zoho Sign API Request")
+        print(f"🔍 DEBUG: URL: {api_url}")
+        print(f"🔍 DEBUG: Headers: {headers}")
+        print(f"🔍 DEBUG: Request Data: {request_data}")
+        print(f"🔍 DEBUG: File: {contract.pdf_filename} ({len(pdf_bytes)} bytes)")
+        
+        # Request senden
+        create_resp = requests.post(api_url, headers=headers, data=request_data, files=files, timeout=30)
+        
+        print(f"🔍 DEBUG: Response Status: {create_resp.status_code}")
+        print(f"🔍 DEBUG: Response Headers: {dict(create_resp.headers)}")
+        print(f"🔍 DEBUG: Response Text: {create_resp.text}")
+        
+        if create_resp.status_code >= 300:
+            return jsonify({
+                "error": f"Zoho Sign Request-Erstellung fehlgeschlagen (Status: {create_resp.status_code})", 
+                "response": create_resp.text,
+                "request_data": request_data
+            }), 502
+        
+        create_json = create_resp.json()
+        
+        # Request ID extrahieren
+        request_id = None
+        if 'requests' in create_json and isinstance(create_json['requests'], dict):
+            request_id = create_json['requests'].get('request_id')
+        
+        if not request_id:
+            return jsonify({
+                "error": "Request ID nicht erhalten", 
+                "response": create_json,
+                "success": False
+            }), 502
+        
+        # Request submiten
+        submit_url = f'https://sign.zoho.eu/api/v1/requests/{request_id}/submit'
+        submit_resp = requests.post(submit_url, headers=headers, timeout=30)
+        
+        if submit_resp.status_code >= 300:
+            return jsonify({"error": "Zoho Sign Request-Submit fehlgeschlagen", "response": submit_resp.text}), 502
+        
+        submit_json = submit_resp.json()
+        
+        # Status aktualisieren
+        contract.status = 'sent'
+        contract.zoho_request_id = request_id
+        contract.updated_at = datetime.datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "zoho_request_id": request_id,
+            "response": submit_json,
+            "contract": contract.to_dict()
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Senden zur Signatur: {str(e)}"}), 500
 
 @app.route('/docusign-test')
 def docusign_test_page():
@@ -3038,10 +3142,7 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
         
         # Signatur-URL generieren (falls nicht angegeben)
         if not signature_url:
-            if contract_type == "kooperationsvertrag":
-                signature_url = f"{request.host_url}api/kooperationsvertraege/{contract_id}/sign"
-            else:
-                signature_url = f"{request.host_url}api/{contract_type}s/{contract_id}/sign"
+            signature_url = f"{request.host_url}api/{contract_type}s/{contract_id}/sign"
         
         # HTML-E-Mail mit schönem Design erstellen
         html_body = f"""
@@ -3156,39 +3257,65 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
         print(f"❌ E-Mail-Versand Fehler: {str(e)}")
         return False, str(e)
 
-# Manuelle Status-Aktualisierung
+# Manuelle Status-Aktualisierung für DocuSign
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/check-status', methods=['POST'])
-def check_dienstleistungsvertrag_status(contract_id):
-    """Prüft den Status eines Dienstleistungsvertrags"""
+def check_docusign_status(contract_id):
+    """Prüft den Status eines DocuSign Envelopes manuell"""
     if "user" not in session:
         return jsonify({"error": "Nicht eingeloggt"}), 401
     
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     
-    # Prüfe ob beide unterschrieben haben
-    if contract.status not in ['completed', 'sent', 'customer_signed', 'partner_signed']:
-        # Status basierend auf Signaturen aktualisieren
-        if contract.signature_data and contract.partner_signature_data:
-            contract.status = 'completed'
-            # Erstelle finales PDF mit BEIDEN Signaturen falls noch nicht vorhanden
-            if not contract.signed_pdf_filename:
-                signed_pdf_filename = create_signed_contract_pdf_complete(contract)
-                if signed_pdf_filename:
-                    contract.signed_pdf_filename = signed_pdf_filename
-            db.session.commit()
-        elif contract.signature_data:
-            contract.status = 'customer_signed'
-            db.session.commit()
-        elif contract.partner_signature_data:
-            contract.status = 'partner_signed'
-            db.session.commit()
+    if not contract.zoho_request_id:
+        return jsonify({"error": "Keine DocuSign ID gefunden"}), 400
     
-    # Einfache Status-Rückgabe
-    return jsonify({
-        "success": True,
-        "status": contract.status,
-        "message": f"Status: {contract.status}"
-    })
+    try:
+        access_token = get_docusign_token()
+        if not access_token:
+            return jsonify({"error": "DocuSign Token nicht verfügbar"}), 400
+        
+        # Envelope Status abrufen
+        url = f"{DOCUSIGN_CONFIG['base_url']}/v2.1/accounts/{DOCUSIGN_CONFIG['account_id']}/envelopes/{contract.zoho_request_id}"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json"
+        }
+        
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            envelope_data = response.json()
+            status = envelope_data.get('status')
+            
+            # Status aktualisieren
+            if status == 'completed' and contract.status != 'signed':
+                contract.status = 'signed'
+                
+                # Unterschriebenes Dokument herunterladen
+                try:
+                    signed_pdf_filename = download_signed_document(contract.zoho_request_id, contract.contract_number, "dienstleistungsvertrag")
+                    if signed_pdf_filename:
+                        contract.signed_pdf_filename = signed_pdf_filename
+                except Exception as e:
+                    print(f"⚠️ Fehler beim Herunterladen: {str(e)}")
+                    
+            elif status == 'declined':
+                contract.status = 'declined'
+            elif status == 'expired':
+                contract.status = 'expired'
+            
+            db.session.commit()
+            
+            return jsonify({
+                "success": True,
+                "status": status,
+                "message": f"Status aktualisiert: {status}"
+            })
+        else:
+            return jsonify({"error": f"DocuSign API Fehler: {response.status_code}"}), 400
+            
+    except Exception as e:
+        return jsonify({"error": f"Status-Prüfung fehlgeschlagen: {str(e)}"}), 500
 
 # E-Mail Signatur-Versand Integration
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/send-docuseal', methods=['POST'])
@@ -3222,19 +3349,19 @@ def send_docuseal_signature(contract_id):
                 '[Vorname Name]': customer.name,
                 '[Straße Hausnummer]': customer.street_address or '',
                 '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                '[Telefon Kunde]': customer.phone or '',
-                '[E-Mail Kunde]': customer.email or '',
-                '[Firmenname Partner]': partner.company_name or partner.name,
-                '[Adresse Partner]': partner.street_address or '',
-                '[Telefon Partner]': partner.phone or '',
-                '[E-Mail Partner]': partner.email or '',
-                '[Identifikationsnummer Partner]': partner.identification_number or '',
-                '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+                '[Telefon]': customer.phone or '',
+                '[E-Mail]': customer.email or '',
+                '[Firmenname]': partner.company_name or partner.name,
+                '[Straße, PLZ, Ort]': partner.street_address or '',
+                '[Telefon]': partner.phone or '',
+                '[E-Mail]': partner.email or '',
+                '[Identifikationsnummer]': partner.identification_number or '',
+                '[Handelsregister]': partner.commercial_register or '',
+                '[USt-IdNr.]': partner.vat_id or '',
+                '[Vertr. durch den Geschäftsführer]': partner.managing_director or '',
+                '[Notfallkontakt]': partner.emergency_phone or '',
+                '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+                '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
                 '[Ort]': customer.city or ''
             }
             
@@ -3265,31 +3392,18 @@ def send_docuseal_signature(contract_id):
         except Exception as e:
             return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
     
-    # E-Mail an KUNDE senden
-    customer_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/customer"
+    # E-Mail mit Signatur-Link senden
+    signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign"
     success, error_msg = send_signature_email(
         contract_id=contract_id,
         customer_email=customer.email,
         customer_name=customer.name,
         contract_type="dienstleistungsvertrag",
-        signature_url=customer_signature_url
+        signature_url=signature_url
     )
     
     if not success:
-        return jsonify({"error": f"E-Mail-Versand an Kunde Fehler: {error_msg}"}), 500
-    
-    # E-Mail an PARTNER senden
-    partner_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/partner"
-    success, error_msg = send_signature_email(
-        contract_id=contract_id,
-        customer_email=partner.email,
-        customer_name=partner.name or partner.company_name,
-        contract_type="dienstleistungsvertrag",
-        signature_url=partner_signature_url
-    )
-    
-    if not success:
-        return jsonify({"error": f"E-Mail-Versand an Partner Fehler: {error_msg}"}), 500
+        return jsonify({"error": f"E-Mail-Versand Fehler: {error_msg}"}), 500
     
     # Status aktualisieren
     contract.status = 'sent'
@@ -3297,7 +3411,7 @@ def send_docuseal_signature(contract_id):
     
     return jsonify({
         "success": True,
-        "message": "Vertrag erfolgreich zur Signatur an beide Parteien gesendet"
+        "message": "Vertrag erfolgreich zur Signatur per E-Mail gesendet"
     })
 
 # DocuSign Webhook
@@ -3493,19 +3607,19 @@ def send_contract_for_signature_alternative(contract_id):
             '[Vorname Name]': customer.name,
             '[Straße Hausnummer]': customer.street_address or '',
             '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name or '',
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+            '[Telefon]': customer.phone or '',
+            '[E-Mail]': customer.email or '',
+            '[Firmenname]': partner.company_name or partner.name,
+            '[Adresse]': partner.street_address or '',
+            '[Telefon]': partner.phone or '',
+            '[E-Mail]': partner.email or '',
+            '[Identifikationsnummer]': partner.identification_number or '',
+            '[Handelsregisternummer]': partner.commercial_register or '',
+            '[Umsatzsteuer-Identifikationsnummer]': partner.vat_id or '',
+            '[Name Geschäftsführer]': partner.managing_director or '',
+            '[Notfalltelefon]': partner.emergency_phone or '',
+            '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+            '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
             '[Ort]': customer.city or '',
             '[Partnerfirma]': partner.partner_company or partner.name
         }
@@ -3601,19 +3715,19 @@ def generate_signed_pdf(contract_id):
             '[Vorname Name]': customer.name,
             '[Straße Hausnummer]': customer.street_address or '',
             '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name or '',
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+            '[Telefon]': customer.phone or '',
+            '[E-Mail]': customer.email or '',
+            '[Firmenname]': partner.company_name or partner.name,
+            '[Adresse]': partner.street_address or '',
+            '[Telefon]': partner.phone or '',
+            '[E-Mail]': partner.email or '',
+            '[Identifikationsnummer]': partner.identification_number or '',
+            '[Handelsregisternummer]': partner.commercial_register or '',
+            '[Umsatzsteuer-Identifikationsnummer]': partner.vat_id or '',
+            '[Name Geschäftsführer]': partner.managing_director or '',
+            '[Notfalltelefon]': partner.emergency_phone or '',
+            '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+            '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
             '[Ort]': customer.city or '',
             '[Partnerfirma]': partner.partner_company or partner.name
         }
@@ -3678,27 +3792,17 @@ def download_contract_pdf(contract_id):
     
     return send_file(pdf_path, as_attachment=True, download_name=contract.pdf_filename)
 
-def add_signature_script(html, contract_id=None, contract_type=None, signer_type=None):
+def add_signature_script(html, contract_id=None, contract_type=None):
     """Fügt JavaScript für Signatur-Funktionalität hinzu"""
     
     # API-URLs
     if contract_id and contract_type:
-        if signer_type:
-            api_url = f'/api/{contract_type}/{contract_id}/save-signature/{signer_type}'
-        else:
-            api_url = f'/api/{contract_type}/{contract_id}/save-signature'
+        api_url = f'/api/{contract_type}/{contract_id}/save-signature'
     else:
         api_url = '/api/save-signature'
     
     # Konvertiere contract_id zu int oder null
     contract_id_js = contract_id if contract_id else 'null'
-    
-    # Bestimme den Platzhalter basierend auf signer_type
-    placeholder_id = 'signature-placeholder'
-    if signer_type == 'partner':
-        placeholder_id = 'signature-placeholder-partner'
-    elif signer_type == 'customer':
-        placeholder_id = 'signature-placeholder'
     
     # Verwende normale String-Konkatenation statt f-string
     signature_script = """
@@ -3706,9 +3810,8 @@ def add_signature_script(html, contract_id=None, contract_type=None, signer_type
         const CONTRACT_ID = """ + str(contract_id_js) + """;
         const CONTRACT_TYPE = '""" + (contract_type or '') + """';
         const API_URL = '""" + api_url + """';
-        const PLACEHOLDER_ID = '""" + placeholder_id + """';
         function initSignature() {
-            const placeholder = document.getElementById(PLACEHOLDER_ID);
+            const placeholder = document.getElementById('signature-placeholder');
             if (!placeholder) return;
             
             // Prüfe ob bereits signiert wurde - wenn ja, zeige Download-Button und Meldung
@@ -3925,122 +4028,6 @@ def add_signature_script(html, contract_id=None, contract_type=None, signer_type
     return html
 
 # Download des unterschriebenen PDFs
-@app.route('/api/dienstleistungsvertraege/<int:contract_id>/sign/customer', methods=['GET'])
-def sign_dienstleistungsvertrag_customer(contract_id):
-    """Zeigt den Dienstleistungsvertrag zur Signatur für den KUNDEN an"""
-    contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
-    customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
-    
-    # Lade Template
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    # Ersetze Variablen
-    if customer and partner:
-        replacements = {
-            '[Auftragsnummer]': contract.contract_number,
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Vorname Name]': customer.name,
-            '[Straße Hausnummer]': customer.street_address or '',
-            '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name,
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-            '[Ort]': customer.city or ''
-        }
-        
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
-    
-    # Füge CSS hinzu um Partner-Unterschrifts-Spalte zu verstecken und Kunden-Unterschrift zu zentrieren
-    hide_partner_style = '''<style>
-        td:has(#signature-placeholder-partner) { display: none !important; }
-        table.email-table:has(#signature-placeholder) tr td:nth-child(1) { width: 60% !important; text-align: center !important; }
-        table.email-table:has(#signature-placeholder) tr td:nth-child(2) { width: 10% !important; }
-        table.email-table:has(#signature-placeholder) tr td:nth-child(3) { width: 30% !important; }
-    </style>'''
-    html_content = html_content.replace('</head>', hide_partner_style + '</head>')
-    
-    # Prüfe ob KUNDE bereits signiert hat
-    if contract.status in ['customer_signed', 'partner_signed', 'completed'] and contract.signature_data:
-        signature_img = f'<div style="margin-top: 20px; text-align: center;"><img src="{contract.signature_data}" style="max-width: 300px; height: auto; display: block; margin: 10px auto;" /></div>'
-        html_content = html_content.replace('<div id="signature-placeholder"></div>', signature_img)
-    
-    # Füge Signatur-Skript hinzu
-    html_content = add_signature_script(html_content, contract_id, "dienstleistungsvertraege", signer_type="customer")
-    
-    return html_content
-
-@app.route('/api/dienstleistungsvertraege/<int:contract_id>/sign/partner', methods=['GET'])
-def sign_dienstleistungsvertrag_partner(contract_id):
-    """Zeigt den Dienstleistungsvertrag zur Signatur für den PARTNER an"""
-    contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
-    customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
-    
-    # Lade Template
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    # Ersetze Variablen
-    if customer and partner:
-        replacements = {
-            '[Auftragsnummer]': contract.contract_number,
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Vorname Name]': customer.name,
-            '[Straße Hausnummer]': customer.street_address or '',
-            '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name,
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-            '[Ort]': customer.city or ''
-        }
-        
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
-    
-    # Verstecke Kunden-Unterschrifts-Spalte für den Partner und zentriere Partner-Unterschrift
-    hide_customer_style = '''<style>
-        td:has(#signature-placeholder) { display: none !important; }
-        table.email-table:has(#signature-placeholder-partner) tr td:nth-child(1) { width: 30% !important; }
-        table.email-table:has(#signature-placeholder-partner) tr td:nth-child(2) { width: 10% !important; }
-        table.email-table:has(#signature-placeholder-partner) tr td:nth-child(3) { width: 60% !important; text-align: center !important; }
-    </style>'''
-    html_content = html_content.replace('</head>', hide_customer_style + '</head>')
-    
-    # Prüfe ob PARTNER bereits signiert hat
-    if contract.status in ['partner_signed', 'completed'] and contract.partner_signature_data:
-        signature_img = f'<div style="margin-top: 20px; text-align: center;"><img src="{contract.partner_signature_data}" style="max-width: 300px; height: auto; display: block; margin: 10px auto;" /></div>'
-        html_content = html_content.replace('<div id="signature-placeholder-partner"></div>', signature_img)
-    
-    # Füge Signatur-Skript hinzu
-    html_content = add_signature_script(html_content, contract_id, "dienstleistungsvertraege", signer_type="partner")
-    
-    return html_content
-
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/sign', methods=['GET'])
 def sign_dienstleistungsvertrag(contract_id):
     """Zeigt den Dienstleistungsvertrag zur Signatur an"""
@@ -4061,19 +4048,19 @@ def sign_dienstleistungsvertrag(contract_id):
             '[Vorname Name]': customer.name,
             '[Straße Hausnummer]': customer.street_address or '',
             '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name,
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+            '[Telefon]': customer.phone or '',
+            '[E-Mail]': customer.email or '',
+            '[Firmenname]': partner.company_name or partner.name,
+            '[Straße, PLZ, Ort]': partner.street_address or '',
+            '[Telefon]': partner.phone or '',
+            '[E-Mail]': partner.email or '',
+            '[Identifikationsnummer]': partner.identification_number or '',
+            '[Handelsregister]': partner.commercial_register or '',
+            '[USt-IdNr.]': partner.vat_id or '',
+            '[Vertr. durch den Geschäftsführer]': partner.managing_director or '',
+            '[Notfallkontakt]': partner.emergency_phone or '',
+            '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+            '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
             '[Ort]': customer.city or ''
         }
         
@@ -4091,77 +4078,9 @@ def sign_dienstleistungsvertrag(contract_id):
     
     return html_content
 
-@app.route('/api/dienstleistungsvertraege/<int:contract_id>/save-signature/customer', methods=['POST'])
-def save_dienstleistungsvertrag_signature_customer(contract_id):
-    """Speichert die Signatur des KUNDEN"""
-    try:
-        contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
-        
-        # Prüfe ob Kunde bereits signiert hat
-        if contract.status in ['customer_signed', 'completed']:
-            return jsonify({'error': 'Der Kunde hat bereits signiert!'}), 400
-        
-        data = request.get_json()
-        signature_data = data.get('signature')
-        
-        # Speichere Kunden-Signatur
-        contract.signature_data = signature_data
-        
-        # Status basierend auf Partner-Signatur
-        if contract.status == 'partner_signed':
-            # Beide haben signiert
-            contract.status = 'completed'
-            # Erstelle finales PDF mit BEIDEN Signaturen
-            signed_pdf_filename = create_signed_contract_pdf_complete(contract)
-            if signed_pdf_filename:
-                contract.signed_pdf_filename = signed_pdf_filename
-        else:
-            # Nur Kunde hat signiert
-            contract.status = 'customer_signed'
-        
-        db.session.commit()
-        
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/dienstleistungsvertraege/<int:contract_id>/save-signature/partner', methods=['POST'])
-def save_dienstleistungsvertrag_signature_partner(contract_id):
-    """Speichert die Signatur des PARTNERS"""
-    try:
-        contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
-        
-        # Prüfe ob Partner bereits signiert hat
-        if contract.status in ['partner_signed', 'completed']:
-            return jsonify({'error': 'Der Partner hat bereits signiert!'}), 400
-        
-        data = request.get_json()
-        signature_data = data.get('signature')
-        
-        # Speichere Partner-Signatur
-        contract.partner_signature_data = signature_data
-        
-        # Status basierend auf Kunden-Signatur
-        if contract.status == 'customer_signed':
-            # Beide haben signiert
-            contract.status = 'completed'
-            # Erstelle finales PDF mit BEIDEN Signaturen
-            signed_pdf_filename = create_signed_contract_pdf_complete(contract)
-            if signed_pdf_filename:
-                contract.signed_pdf_filename = signed_pdf_filename
-        else:
-            # Nur Partner hat signiert
-            contract.status = 'partner_signed'
-        
-        db.session.commit()
-        
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/save-signature', methods=['POST'])
 def save_dienstleistungsvertrag_signature(contract_id):
-    """Legacy: Speichert die Signatur eines Dienstleistungsvertrags (falls noch verwendet)"""
+    """Speichert die Signatur eines Dienstleistungsvertrags und erstellt PDF"""
     try:
         contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
         
@@ -4187,101 +4106,8 @@ def save_dienstleistungsvertrag_signature(contract_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def create_signed_contract_pdf_complete(contract):
-    """Erstellt ein finales PDF mit BEIDEN Signaturen (Kunde + Partner)"""
-    try:
-        print(f"🔍 Erstelle PDF mit beiden Signaturen für Vertrag {contract.id}")
-        
-        # Prüfe ob beide Signaturen vorhanden sind
-        if not contract.signature_data:
-            print("❌ Keine Kunden-Signatur vorhanden")
-            return None
-        if not contract.partner_signature_data:
-            print("❌ Keine Partner-Signatur vorhanden")
-            return None
-            
-        print(f"✅ Beide Signaturen vorhanden")
-        
-        # Lade Template
-        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-        with open(template_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Variablen ersetzen
-        customer = Customer.query.get(contract.customer_id)
-        partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
-        
-        if customer and partner:
-            replacements = {
-                '[Auftragsnummer]': contract.contract_number,
-                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                '[Vorname Name]': customer.name,
-                '[Straße Hausnummer]': customer.street_address or '',
-                '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                '[Telefon Kunde]': customer.phone or '',
-                '[E-Mail Kunde]': customer.email or '',
-                '[Firmenname Partner]': partner.company_name or partner.name,
-                '[Adresse Partner]': partner.street_address or '',
-                '[Telefon Partner]': partner.phone or '',
-                '[E-Mail Partner]': partner.email or '',
-                '[Identifikationsnummer Partner]': partner.identification_number or '',
-                '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-                '[Ort]': customer.city or ''
-            }
-            
-            for placeholder, value in replacements.items():
-                html_content = html_content.replace(placeholder, str(value))
-        
-        print(f"✅ Variablen ersetzt")
-        
-        # Füge BEIDE Signaturen in die existierenden Felder ein
-        # Kunden-Signatur
-        customer_signature_img = f'<div style="margin-top: 20px; text-align: center;"><img src="{contract.signature_data}" style="max-width: 300px; height: auto; display: block; margin: 10px auto;" /></div>'
-        html_content = html_content.replace('<div id="signature-placeholder"></div>', customer_signature_img)
-        print(f"✅ Kunden-Signatur eingefügt")
-        
-        # Partner-Signatur
-        partner_signature_img = f'<div style="margin-top: 20px; text-align: center;"><img src="{contract.partner_signature_data}" style="max-width: 300px; height: auto; display: block; margin: 10px auto;" /></div>'
-        html_content = html_content.replace('<div id="signature-placeholder-partner"></div>', partner_signature_img)
-        print(f"✅ Partner-Signatur eingefügt")
-        
-        # Entferne JavaScript und CSS-Verstecke
-        import re
-        html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-        
-        # Erstelle PDF
-        from weasyprint import HTML, CSS
-        from weasyprint.text.fonts import FontConfiguration
-        
-        font_config = FontConfiguration()
-        html_doc = HTML(string=html_content)
-        css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
-        
-        pdf_filename = f"signed_complete_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
-        
-        print(f"🔍 Erstelle PDF: {pdf_path}")
-        pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-        
-        with open(pdf_path, 'wb') as f:
-            f.write(pdf_bytes)
-        
-        print(f"✅ PDF erfolgreich erstellt: {pdf_filename}")
-        return pdf_filename
-        
-    except Exception as e:
-        print(f"❌ Fehler beim Erstellen des finalen PDFs: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
-
 def create_signed_contract_pdf(contract, signature_data, contract_type):
-    """Erstellt ein PDF mit eingefügter Signatur (Legacy)"""
+    """Erstellt ein PDF mit eingefügter Signatur"""
     try:
         # Lade Template
         template_name = "dienstleistungsvertrag.html" if contract_type == "dienstleistungsvertrag" else "kooperationsvertrag.html"
@@ -4302,38 +4128,37 @@ def create_signed_contract_pdf(contract, signature_data, contract_type):
                     '[Vorname Name]': customer.name,
                     '[Straße Hausnummer]': customer.street_address or '',
                     '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                    '[Telefon Kunde]': customer.phone or '',
-                    '[E-Mail Kunde]': customer.email or '',
-                    '[Firmenname Partner]': partner.company_name or partner.name,
-                    '[Adresse Partner]': partner.street_address or '',
-                    '[Telefon Partner]': partner.phone or '',
-                    '[E-Mail Partner]': partner.email or '',
-                    '[Identifikationsnummer Partner]': partner.identification_number or '',
-                    '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                    '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                    '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                    '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                    '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                    '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+                    '[Telefon]': customer.phone or '',
+                    '[E-Mail]': customer.email or '',
+                    '[Firmenname]': partner.company_name or partner.name,
+                    '[Straße, PLZ, Ort]': partner.street_address or '',
+                    '[Telefon]': partner.phone or '',
+                    '[E-Mail]': partner.email or '',
+                    '[Identifikationsnummer]': partner.identification_number or '',
+                    '[Handelsregister]': partner.commercial_register or '',
+                    '[USt-IdNr.]': partner.vat_id or '',
+                    '[Vertr. durch den Geschäftsführer]': partner.managing_director or '',
+                    '[Notfallkontakt]': partner.emergency_phone or '',
+                    '[Betrag]': str(contract.monthly_rate) if contract.monthly_rate else '',
+                    '[Tagessatz]': str(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
                     '[Ort]': customer.city or ''
                 }
                 
                 for placeholder, value in replacements.items():
                     html_content = html_content.replace(placeholder, str(value))
         else:
-            # Kooperationsvertrag - WICHTIG: receiver_partner ist der Dienstleister!
-            receiver_partner = Kooperationspartner.query.get(contract.receiver_partner_id)
+            # Kooperationsvertrag
+            sender_partner = Kooperationspartner.query.get(contract.sender_partner_id)
             
-            if receiver_partner:
+            if sender_partner:
                 replacements = {
-                    '[Firmenname des Dienstleisters]': receiver_partner.company_name or receiver_partner.name,
-                    '[Straße]': receiver_partner.street_address.split(',')[0] if receiver_partner.street_address else '',
-                    '[PLZ]': receiver_partner.street_address.split(',')[1].strip().split(' ')[0] if receiver_partner.street_address and ',' in receiver_partner.street_address else '',
-                    '[Ort]': receiver_partner.street_address.split(',')[1].strip().split(' ')[1] if receiver_partner.street_address and ',' in receiver_partner.street_address and len(receiver_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
+                    '[Firmenname des Dienstleisters]': sender_partner.company_name or sender_partner.name,
+                    '[Straße]': sender_partner.street_address.split(',')[0] if sender_partner.street_address else '',
+                    '[PLZ]': sender_partner.street_address.split(',')[1].strip().split(' ')[0] if sender_partner.street_address and ',' in sender_partner.street_address else '',
+                    '[Ort]': sender_partner.street_address.split(',')[1].strip().split(' ')[1] if sender_partner.street_address and ',' in sender_partner.street_address and len(sender_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
                     '[Land]': 'Deutschland',
-                    '[Vertretungsberechtigte]': receiver_partner.managing_director or '',
-                    '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                    '[Provision]': (receiver_partner.provision or '').strip()
+                    '[Vertretungsberechtigte]': sender_partner.managing_director or '',
+                    '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y')
                 }
                 
                 for placeholder, value in replacements.items():
@@ -4358,10 +4183,7 @@ def create_signed_contract_pdf(contract, signature_data, contract_type):
         pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
         
         css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
-        pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-        
-        with open(pdf_path, 'wb') as f:
-            f.write(pdf_bytes)
+        html_doc.write_pdf(pdf_path, stylesheets=[css], font_config=font_config)
         
         return pdf_filename
         

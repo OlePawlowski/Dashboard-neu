@@ -6,6 +6,7 @@
   <title>Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://kit.fontawesome.com/a2e0f2ac1f.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -568,6 +569,8 @@
       function esc(s){ return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
       function render(items){
+        // Vor dem Render prüfen, ob der Nutzer am (oder nahe) unteren Rand ist
+        const wasAtBottom = (list.scrollHeight - list.scrollTop - list.clientHeight) < 40;
         if (!Array.isArray(items) || !items.length){ list.innerHTML = '<p class="muted">Keine Teamnotizen vorhanden.</p>'; return; }
         const byId = Object.create(null); items.forEach(i=> byId[i.id]=i);
         const children = Object.create(null); items.forEach(i=>{ if(i.parent_id){ (children[i.parent_id] ||= []).push(i); } });
@@ -589,7 +592,10 @@
         }
         const roots = items.filter(i=>!i.parent_id);
         list.innerHTML = roots.map(r=>node(r,0)).join('');
-        list.scrollTop = list.scrollHeight;
+        // Nur automatisch nach unten scrollen, wenn man zuvor unten war
+        if (wasAtBottom) {
+          list.scrollTop = list.scrollHeight;
+        }
 
         // Rechtsklick: Kontextmenü
         ensureMenu();
@@ -617,6 +623,8 @@
           if (!res.ok){ const d = await res.json().catch(()=>({})); throw new Error(d.error||'Fehler beim Senden'); }
           input.value=''; input.removeAttribute('data-reply-to');
           await load();
+          // Nach eigenem Senden immer nach unten scrollen
+          list.scrollTop = list.scrollHeight;
         }catch(err){ alert('❌ '+(err?.message||err)); }
       }
 
@@ -961,17 +969,195 @@
         <button id="close-kooperationspartner" class="btn-small" type="button">Schließen</button>
       </div>
       <div class="modal-body">
-        <div class="partners-header">
-          <div class="partners-controls">
+        <div class="customers-header">
+          <div class="customers-controls">
             <input type="text" id="partner-search" placeholder="Nach Name oder E-Mail suchen..." />
             <button id="add-partner-btn" class="btn-small">Neuer Partner</button>
           </div>
         </div>
-        <div class="partners-content">
-          <div class="partners-list" id="partners-list">
-            <p>Lade Kooperationspartner...</p>
+        <div class="customers-content">
+          <div class="customers-sidebar">
+            <div class="customers-list" id="partners-list">
+              <p>Lade Kooperationspartner...</p>
+            </div>
+          </div>
+          <div class="customer-profile" id="partner-profile">
+            <div class="customer-profile-empty">
+              <i class="fas fa-user-circle"></i>
+              <h4>Wähle einen Partner aus</h4>
+              <p>Klicke auf einen Partner in der Liste, um das Profil anzuzeigen</p>
+            </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Neuer Kooperationspartner Modal -->
+  <div id="new-partner-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content glass" style="max-width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3>Neuer Kooperationspartner</h3>
+        <button id="close-new-partner" class="btn-small" type="button">Schließen</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; min-height: 0;">
+        <form id="new-partner-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="new-partner-name">Name *</label>
+              <input type="text" id="new-partner-name" required>
+            </div>
+            <div class="form-group">
+              <label for="new-partner-email">E-Mail *</label>
+              <input type="email" id="new-partner-email" required>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-company">Firmenname</label>
+            <input type="text" id="new-partner-company">
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-address">Straße, PLZ, Ort</label>
+            <input type="text" id="new-partner-address">
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="new-partner-phone">Telefon</label>
+              <input type="text" id="new-partner-phone">
+            </div>
+            <div class="form-group">
+              <label for="new-partner-emergency">Notfallkontakt (24 Stunden)</label>
+              <input type="text" id="new-partner-emergency">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-id">Identifikationsnummer</label>
+            <input type="text" id="new-partner-id">
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-register">Handelsregister</label>
+            <input type="text" id="new-partner-register">
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-vat">USt-IdNr.</label>
+            <input type="text" id="new-partner-vat">
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-director">Vertr. durch den Geschäftsführer</label>
+            <input type="text" id="new-partner-director">
+          </div>
+          
+          <div class="form-actions">
+            <button type="button" id="cancel-new-partner" class="btn-small">Abbrechen</button>
+            <button type="submit" class="btn-small">Erstellen</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Kooperationsvertrag Modal -->
+  <div id="kooperationsvertrag-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content glass" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>Neuer Kooperationsvertrag</h3>
+        <button id="close-kooperationsvertrag" class="btn-small" type="button">Schließen</button>
+      </div>
+      <div class="modal-body">
+        <form id="kooperationsvertrag-form">
+          <div class="form-group">
+            <label for="kooperationsvertrag-number">Vertragsnummer *</label>
+            <input type="text" id="kooperationsvertrag-number" required>
+          </div>
+          
+          <div class="form-actions">
+            <button type="button" id="cancel-kooperationsvertrag" class="btn-small">Abbrechen</button>
+            <button type="submit" class="btn-small">Erstellen</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kooperationspartner Bearbeiten Modal -->
+  <div id="edit-partner-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content glass" style="max-width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3>Kooperationspartner bearbeiten</h3>
+        <button id="close-edit-partner" class="btn-small" type="button">Schließen</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; min-height: 0;">
+        <form id="edit-partner-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-partner-name">Name *</label>
+              <input type="text" id="edit-partner-name" required>
+            </div>
+            <div class="form-group">
+              <label for="edit-partner-email">E-Mail *</label>
+              <input type="email" id="edit-partner-email" required>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-company">Firmenname</label>
+            <input type="text" id="edit-partner-company">
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-address">Straße, PLZ, Ort</label>
+            <input type="text" id="edit-partner-address">
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-partner-phone">Telefon</label>
+              <input type="text" id="edit-partner-phone">
+            </div>
+            <div class="form-group">
+              <label for="edit-partner-emergency">Notfallkontakt (24 Stunden)</label>
+              <input type="text" id="edit-partner-emergency">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-id">Identifikationsnummer</label>
+            <input type="text" id="edit-partner-id">
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-register">Handelsregister</label>
+            <input type="text" id="edit-partner-register">
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-vat">USt-IdNr.</label>
+            <input type="text" id="edit-partner-vat">
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-director">Vertr. durch den Geschäftsführer</label>
+            <input type="text" id="edit-partner-director">
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-partner-provision">Provision</label>
+            <input type="text" id="edit-partner-provision" placeholder="z. B. 20">
+          </div>
+          
+          <div class="form-actions">
+            <button type="button" id="cancel-edit-partner" class="btn-small">Abbrechen</button>
+            <button type="submit" class="btn-small">Speichern</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -1284,6 +1470,25 @@
 
   <!-- Navigation und Kundenverwaltung -->
   <script>
+    // Status-Label Funktionen (global definiert für sofortige Verfügbarkeit)
+    window.getStatusText = function(status) {
+      const statusMap = {
+        'draft': 'Entwurf',
+        'generated': 'Generiert',
+        'sent': 'Gesendet',
+        'signed': 'Unterschrieben',
+        'completed': 'Abgeschlossen',
+        'expired': 'Abgelaufen',
+        'declined': 'Abgelehnt'
+      };
+      return statusMap[status] || status;
+    };
+    
+    // Alias für Kompatibilität - ruft getStatusText auf
+    window.getStatusLabel = function(status) {
+      return window.getStatusText(status);
+    };
+    
     // Warten bis DOM geladen ist
     document.addEventListener('DOMContentLoaded', function() {
       console.log('DOM geladen, setze Event Listeners...');
@@ -1365,6 +1570,34 @@
       const addPartnerBtn = document.getElementById('add-partner-btn');
       const partnerSearch = document.getElementById('partner-search');
 
+      // Partner-Suche (Filter wie bei Kunden)
+      function filterPartnersList(query) {
+        const q = String(query || '').toLowerCase();
+        const items = partnersList.querySelectorAll('.customer-item');
+        items.forEach(item => {
+          const nameEl = item.querySelector('.customer-item-name');
+          const name = (nameEl ? nameEl.textContent : '').toLowerCase();
+          const id = String(item.dataset.id || '');
+          const matches = q === '' || name.includes(q) || id.includes(q);
+          item.style.display = matches ? '' : 'none';
+        });
+      }
+      
+      if (partnerSearch) {
+        // Live-Filter beim Tippen
+        partnerSearch.addEventListener('input', (e) => {
+          filterPartnersList(e.target.value);
+        });
+        
+        // Enter-Taste löst Filter ebenso aus
+        partnerSearch.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            filterPartnersList(partnerSearch.value);
+          }
+        });
+      }
+
       // Kooperationspartner laden
       async function loadPartners() {
         try {
@@ -1378,6 +1611,43 @@
             partnersList.innerHTML = `<p>Fehler beim Laden der Kooperationspartner: ${e.message}</p>`;
           }
         }
+      }
+
+      // Kooperationspartner für E-Mail-Tab laden
+      async function loadPartnersForEmail() {
+        try {
+          const res = await fetch('/api/kooperationspartner');
+          const partners = await res.json();
+          console.log('Kooperationspartner für E-Mail geladen:', partners);
+          renderPartnersForEmail(partners);
+        } catch (e) {
+          console.error('Fehler beim Laden der Kooperationspartner für E-Mail:', e);
+          const partnerSelection = document.getElementById('partner-selection');
+          if (partnerSelection) {
+            partnerSelection.innerHTML = `<p>Fehler beim Laden der Kooperationspartner: ${e.message}</p>`;
+          }
+        }
+      }
+
+      // Partner für E-Mail-Auswahl rendern
+      function renderPartnersForEmail(partners) {
+        const partnerSelection = document.getElementById('partner-selection');
+        if (!partnerSelection) return;
+        
+        if (!partners.length) {
+          partnerSelection.innerHTML = '<p>Keine Kooperationspartner vorhanden.</p>';
+          return;
+        }
+        
+        partnerSelection.innerHTML = partners.map(partner => `
+          <div class="partner-checkbox">
+            <input type="checkbox" id="partner-${partner.id}" value="${partner.email}" data-name="${partner.name}">
+            <label for="partner-${partner.id}">
+              <strong>${partner.name}</strong><br>
+              <small>${partner.email}</small>
+            </label>
+          </div>
+        `).join('');
       }
 
       // Betreuungskräfte Modal
@@ -1493,7 +1763,7 @@
         }catch(err){ alert('❌ '+(err?.message||err)); }
       }
 
-      // Kooperationspartner rendern
+      // Kooperationspartner rendern (wie Kunden)
       function renderPartners(partners) {
         if (!partnersList) return;
         
@@ -1503,55 +1773,411 @@
         }
         
         partnersList.innerHTML = partners.map(partner => `
-          <div class="partner-item" data-id="${partner.id}">
-            <div class="partner-item-info">
-              <div class="partner-item-name">${partner.name}</div>
-              <div class="partner-item-details">
-                <span><i class="fas fa-envelope"></i> ${partner.email}</span>
+          <div class="customer-item" data-id="${partner.id}">
+            <div class="customer-item-info">
+              <div class="customer-item-name">${partner.name}</div>
+              <div class="customer-item-details">
+                ${partner.email ? `<span><i class="fas fa-envelope"></i> ${partner.email}</span>` : ''}
+                ${partner.phone ? `<span><i class="fas fa-phone"></i> ${partner.phone}</span>` : ''}
               </div>
-              <div class="partner-item-meta">
-                <small>Erstellt: ${new Date(partner.created_at).toLocaleDateString('de-DE')}</small>
+              <div class="customer-item-meta">
+                <small>ID: ${partner.id} • ${new Date(partner.created_at).toLocaleDateString('de-DE')}</small>
               </div>
             </div>
           </div>
         `).join('');
         
-        // Event Listeners für Rechtsklick hinzufügen
-        partnersList.querySelectorAll('.partner-item').forEach(item => {
+        // Event Listeners für Partnerauswahl und Rechtsklick hinzufügen
+        partnersList.querySelectorAll('.customer-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const partnerId = parseInt(item.dataset.id);
+            selectPartner(partnerId);
+          });
+          
           // Rechtsklick für Löschen
-          item.addEventListener('contextmenu', async (e) => {
+          item.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             const partnerId = parseInt(item.dataset.id);
-            const partnerName = item.querySelector('.partner-item-name').textContent;
+            const partnerName = item.querySelector('.customer-item-name').textContent;
             
             if (confirm(`Möchten Sie den Kooperationspartner "${partnerName}" wirklich löschen?`)) {
-              try {
-                const res = await fetch(`/api/kooperationspartner/${partnerId}`, { method: 'DELETE' });
-                if (res.ok) {
-                  alert('✅ Kooperationspartner erfolgreich gelöscht');
-                  loadPartners(); // Liste neu laden
-                } else {
-                  const error = await res.json();
-                  alert('❌ Fehler beim Löschen: ' + error.error);
-                }
-              } catch (err) {
-                alert('❌ Fehler beim Löschen: ' + err.message);
-              }
+              deletePartner(partnerId);
             }
           });
         });
       }
+      
+      // Partner auswählen (wie bei Kunden)
+      async function selectPartner(partnerId) {
+        try {
+          const res = await fetch(`/api/kooperationspartner/${partnerId}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          const partner = await res.json();
+          currentPartner = partner;
+          renderPartnerProfile(partner);
+          
+          // Aktive Auswahl visuell markieren
+          document.querySelectorAll('.customer-item').forEach(item => {
+            item.classList.remove('active');
+          });
+          document.querySelector(`[data-id="${partnerId}"]`).classList.add('active');
+        } catch (e) {
+          console.error('Fehler beim Laden des Partnerprofils:', e);
+          alert('❌ Fehler beim Laden des Partnerprofils: ' + e.message);
+        }
+      }
+      
+      // Partner-Profil rendern (wie bei Kunden)
+      function renderPartnerProfile(partner) {
+        const partnerProfile = document.getElementById('partner-profile');
+        if (!partnerProfile) return;
+        
+        partnerProfile.innerHTML = `
+          <div class="customer-profile-header">
+            <div class="customer-profile-title">
+              <h2>${partner.name}</h2>
+              <div class="customer-profile-meta">
+                <span><i class="fas fa-envelope"></i> ${partner.email || 'Keine E-Mail'}</span>
+                ${partner.phone ? `<span><i class="fas fa-phone"></i> ${partner.phone}</span>` : ''}
+                <span><i class="fas fa-id-card"></i> ID: ${partner.id}</span>
+              </div>
+            </div>
+            <div class="customer-profile-actions">
+              <button class="btn-small edit-partner-btn" data-partner-id="${partner.id}">Bearbeiten</button>
+              <button class="btn-small delete-partner-btn" data-partner-id="${partner.id}">Löschen</button>
+            </div>
+          </div>
+          
+          <div class="customer-profile-content">
+            <div class="customer-profile-tabs">
+              <button class="tab-btn active" data-tab="overview">Übersicht</button>
+              <button class="tab-btn" data-tab="contracts">Kooperationsverträge</button>
+            </div>
+            
+            <div class="customer-profile-tab-content">
+              <div id="tab-overview" class="tab-panel active">
+                <div class="profile-section">
+                  <h3>Grunddaten</h3>
+                  <div class="profile-grid">
+                    <div class="profile-item">
+                      <label>Name:</label>
+                      <span>${partner.name}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>E-Mail:</label>
+                      <span>${partner.email || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Telefon:</label>
+                      <span>${partner.phone || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Firmenname:</label>
+                      <span>${partner.company_name || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Adresse:</label>
+                      <span>${partner.street_address || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Notfallkontakt:</label>
+                      <span>${partner.emergency_phone || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Identifikationsnummer:</label>
+                      <span>${partner.identification_number || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Handelsregister:</label>
+                      <span>${partner.commercial_register || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>USt-IdNr.:</label>
+                      <span>${partner.vat_id || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Geschäftsführer:</label>
+                      <span>${partner.managing_director || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>Provision:</label>
+                      <span>${partner.provision || '-'}</span>
+                    </div>
+                    <div class="profile-item">
+                      <label>ID:</label>
+                      <span>${partner.id}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div id="tab-contracts" class="tab-panel">
+                <div class="profile-section">
+                  <h3>Kooperationsverträge</h3>
+                  <div class="contracts-controls" style="margin-bottom: 1rem;">
+                    <button class="btn-small" id="create-partner-contract-btn" data-partner-id="${partner.id}">
+                      <i class="fas fa-plus"></i> Neuer Vertrag
+                    </button>
+                    <button class="btn-small" id="refresh-partner-contracts-btn" data-partner-id="${partner.id}">
+                      <i class="fas fa-sync"></i> Aktualisieren
+                    </button>
+                  </div>
+                  <div id="partner-contracts-list" class="contracts-list">
+                    <p>Lade Kooperationsverträge...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Event Listeners für Tabs hinzufügen
+        partnerProfile.querySelectorAll('.tab-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const tabName = e.target.dataset.tab;
+            showPartnerTab(tabName, e.target, partner.id);
+          });
+        });
+        
+        // Event Listeners für Bearbeiten/Löschen Buttons
+        partnerProfile.querySelectorAll('.edit-partner-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const partnerId = parseInt(e.target.dataset.partnerId);
+            showEditPartnerModal(partnerId);
+          });
+        });
+        
+        partnerProfile.querySelectorAll('.delete-partner-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const partnerId = parseInt(e.target.dataset.partnerId);
+            deletePartner(partnerId);
+          });
+        });
+        
+        // Kooperationsverträge laden
+        if (currentPartner) {
+          loadPartnerKooperationsvertraege(partner.id);
+        }
+      }
+      
+      // Tab-Funktionen für Partner
+      function showPartnerTab(tabName, clickedButton, partnerId) {
+        // Alle Tabs verstecken
+        document.querySelectorAll('#partner-profile .tab-panel').forEach(panel => {
+          panel.classList.remove('active');
+        });
+        document.querySelectorAll('#partner-profile .tab-btn').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        // Gewählten Tab anzeigen
+        const targetPanel = document.getElementById(`tab-${tabName}`);
+        if (targetPanel) {
+          targetPanel.classList.add('active');
+        }
+        
+        if (clickedButton) {
+          clickedButton.classList.add('active');
+        }
+        
+        // Spezielle Aktionen für bestimmte Tabs
+        if (tabName === 'contracts' && partnerId) {
+          loadPartnerKooperationsvertraege(partnerId);
+        }
+      }
+      
+      let currentPartner = null;
 
       // Neuen Kooperationspartner hinzufügen
       if (addPartnerBtn) {
         addPartnerBtn.addEventListener('click', () => {
-          const name = prompt('Firmenname:');
-          const email = prompt('E-Mail:');
-          
-          if (!name || !email) return;
-          
-          addPartner({ name, email });
+          showNewPartnerModal();
         });
+      }
+
+      // Modal-Funktionen für Kooperationspartner
+      function showNewPartnerModal() {
+        const modal = document.getElementById('new-partner-modal');
+        if (modal) {
+          modal.style.display = 'block';
+          // Formular zurücksetzen
+          document.getElementById('new-partner-form').reset();
+        }
+      }
+      
+      function showEditPartnerModal(partnerId) {
+        const modal = document.getElementById('edit-partner-modal');
+        if (modal) {
+          modal.style.display = 'block';
+          loadPartnerForEdit(partnerId);
+        }
+      }
+      
+      async function loadPartnerForEdit(partnerId) {
+        try {
+          console.log('Loading partner for edit:', partnerId);
+          const res = await fetch(`/api/kooperationspartner/${partnerId}`);
+          console.log('Response status:', res.status);
+          
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unbekannter Fehler'}`);
+          }
+          
+          const partner = await res.json();
+          console.log('Partner data loaded:', partner);
+          
+          // Formular mit Partner-Daten füllen
+          document.getElementById('edit-partner-name').value = partner.name || '';
+          document.getElementById('edit-partner-email').value = partner.email || '';
+          document.getElementById('edit-partner-company').value = partner.company_name || '';
+          document.getElementById('edit-partner-address').value = partner.street_address || '';
+          document.getElementById('edit-partner-phone').value = partner.phone || '';
+          document.getElementById('edit-partner-emergency').value = partner.emergency_phone || '';
+          document.getElementById('edit-partner-id').value = partner.identification_number || '';
+          document.getElementById('edit-partner-register').value = partner.commercial_register || '';
+          document.getElementById('edit-partner-vat').value = partner.vat_id || '';
+          document.getElementById('edit-partner-director').value = partner.managing_director || '';
+          
+          // Partner-ID für Update speichern
+          document.getElementById('edit-partner-form').dataset.partnerId = partnerId;
+        } catch (e) {
+          console.error('Fehler beim Laden des Partners:', e);
+          alert('❌ Fehler beim Laden des Partners: ' + e.message);
+        }
+      }
+      
+      async function deletePartner(partnerId) {
+        try {
+          const res = await fetch(`/api/kooperationspartner/${partnerId}`, {
+            method: 'DELETE'
+          });
+          
+          if (res.ok) {
+            await loadPartners(); // Liste aktualisieren
+            alert('Kooperationspartner erfolgreich gelöscht');
+          } else {
+            const error = await res.json();
+            alert(`Fehler beim Löschen: ${error.error}`);
+          }
+        } catch (e) {
+          console.error('Fehler beim Löschen:', e);
+          alert('Fehler beim Löschen des Partners');
+        }
+      }
+
+      // Event Listeners für Modals
+      const newPartnerModal = document.getElementById('new-partner-modal');
+      const editPartnerModal = document.getElementById('edit-partner-modal');
+      const closeNewPartner = document.getElementById('close-new-partner');
+      const closeEditPartner = document.getElementById('close-edit-partner');
+      const cancelNewPartner = document.getElementById('cancel-new-partner');
+      const cancelEditPartner = document.getElementById('cancel-edit-partner');
+      
+      // Modal schließen
+      [closeNewPartner, cancelNewPartner].forEach(btn => {
+        if (btn) {
+          btn.addEventListener('click', () => {
+            if (newPartnerModal) newPartnerModal.style.display = 'none';
+          });
+        }
+      });
+      
+      [closeEditPartner, cancelEditPartner].forEach(btn => {
+        if (btn) {
+          btn.addEventListener('click', () => {
+            if (editPartnerModal) editPartnerModal.style.display = 'none';
+          });
+        }
+      });
+      
+      // Modal außerhalb klicken zum Schließen
+      if (newPartnerModal) {
+        newPartnerModal.addEventListener('click', (e) => {
+          if (e.target === newPartnerModal) newPartnerModal.style.display = 'none';
+        });
+      }
+      
+      if (editPartnerModal) {
+        editPartnerModal.addEventListener('click', (e) => {
+          if (e.target === editPartnerModal) editPartnerModal.style.display = 'none';
+        });
+      }
+      
+      // Formular-Submit Handler
+      const newPartnerForm = document.getElementById('new-partner-form');
+      const editPartnerForm = document.getElementById('edit-partner-form');
+      
+      if (newPartnerForm) {
+        newPartnerForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const formData = {
+            name: document.getElementById('new-partner-name').value.trim(),
+            email: document.getElementById('new-partner-email').value.trim(),
+            company_name: document.getElementById('new-partner-company').value.trim(),
+            street_address: document.getElementById('new-partner-address').value.trim(),
+            phone: document.getElementById('new-partner-phone').value.trim(),
+            emergency_phone: document.getElementById('new-partner-emergency').value.trim(),
+            identification_number: document.getElementById('new-partner-id').value.trim(),
+            commercial_register: document.getElementById('new-partner-register').value.trim(),
+            vat_id: document.getElementById('new-partner-vat').value.trim(),
+            managing_director: document.getElementById('new-partner-director').value.trim()
+          };
+          
+          await addPartner(formData);
+          newPartnerModal.style.display = 'none';
+        });
+      }
+      
+      if (editPartnerForm) {
+        editPartnerForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const partnerId = editPartnerForm.dataset.partnerId;
+          const formData = {
+            name: document.getElementById('edit-partner-name').value.trim(),
+            email: document.getElementById('edit-partner-email').value.trim(),
+            company_name: document.getElementById('edit-partner-company').value.trim(),
+            street_address: document.getElementById('edit-partner-address').value.trim(),
+            phone: document.getElementById('edit-partner-phone').value.trim(),
+            emergency_phone: document.getElementById('edit-partner-emergency').value.trim(),
+            identification_number: document.getElementById('edit-partner-id').value.trim(),
+            commercial_register: document.getElementById('edit-partner-register').value.trim(),
+            vat_id: document.getElementById('edit-partner-vat').value.trim(),
+            managing_director: document.getElementById('edit-partner-director').value.trim(),
+            provision: document.getElementById('edit-partner-provision').value.trim()
+          };
+          
+          await updatePartner(partnerId, formData);
+          editPartnerModal.style.display = 'none';
+        });
+      }
+      
+      // Kooperationspartner aktualisieren
+      async function updatePartner(partnerId, partnerData) {
+        try {
+          console.log('Updating partner:', partnerId, partnerData);
+          const res = await fetch(`/api/kooperationspartner/${partnerId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(partnerData)
+          });
+          
+          console.log('Response status:', res.status);
+          const responseData = await res.json();
+          console.log('Response data:', responseData);
+          
+          if (res.ok) {
+            await loadPartners(); // Liste aktualisieren
+            alert('✅ Kooperationspartner erfolgreich aktualisiert');
+          } else {
+            alert(`❌ Fehler beim Aktualisieren: ${responseData.error || 'Unbekannter Fehler'}`);
+          }
+        } catch (e) {
+          console.error('Fehler beim Aktualisieren:', e);
+          alert('❌ Fehler beim Aktualisieren des Partners: ' + e.message);
+        }
       }
 
       // Kooperationspartner hinzufügen
@@ -1592,6 +2218,72 @@
               item.style.display = 'none';
             }
           });
+        });
+      }
+
+      // Erinnerungsmail senden
+      const sendReminderBtn = document.getElementById('send-reminder-btn');
+      if (sendReminderBtn) {
+        sendReminderBtn.addEventListener('click', async () => {
+          const subject = document.getElementById('reminder-subject').value.trim();
+          const body = document.getElementById('reminder-body').value.trim();
+          
+          if (!subject) {
+            alert('Bitte geben Sie einen E-Mail Betreff ein.');
+            return;
+          }
+          
+          // Ausgewählte Partner sammeln
+          const selectedPartners = [];
+          const checkboxes = document.querySelectorAll('#partner-selection input[type="checkbox"]:checked');
+          
+          if (checkboxes.length === 0) {
+            alert('Bitte wählen Sie mindestens einen Kooperationspartner aus.');
+            return;
+          }
+          
+          checkboxes.forEach(checkbox => {
+            selectedPartners.push({
+              email: checkbox.value,
+              name: checkbox.dataset.name
+            });
+          });
+          
+          if (!confirm(`Möchten Sie die Erinnerungsmail an ${selectedPartners.length} Kooperationspartner senden?`)) {
+            return;
+          }
+          
+          try {
+            sendReminderBtn.disabled = true;
+            sendReminderBtn.textContent = 'Sende...';
+            
+            const response = await fetch('/api/send-reminder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                subject: subject,
+                body: body,
+                partners: selectedPartners
+              })
+            });
+            
+            if (response.ok) {
+              alert(`✅ Erinnerungsmail erfolgreich an ${selectedPartners.length} Kooperationspartner gesendet!`);
+              // Formular zurücksetzen
+              document.getElementById('reminder-subject').value = '';
+              document.getElementById('reminder-body').value = '';
+              checkboxes.forEach(cb => cb.checked = false);
+            } else {
+              const error = await response.json();
+              alert('❌ Fehler beim Senden: ' + error.error);
+            }
+          } catch (error) {
+            console.error('Fehler beim Senden der Erinnerungsmail:', error);
+            alert('❌ Fehler beim Senden: ' + error.message);
+          } finally {
+            sendReminderBtn.disabled = false;
+            sendReminderBtn.textContent = 'Erinnerungsmail senden';
+          }
         });
       }
 
@@ -1745,6 +2437,7 @@
             <button class="tab-btn active" data-tab="overview">Übersicht</button>
             <button class="tab-btn" data-tab="offers">Angebote</button>
             <button class="tab-btn" data-tab="questionnaires">Befragungsbögen</button>
+            <button class="tab-btn" data-tab="contracts">Dienstleistungsverträge</button>
             <button class="tab-btn" data-tab="history">Kontakthistorie</button>
           </div>
           
@@ -1826,6 +2519,23 @@
               </div>
             </div>
             
+            <div id="tab-contracts" class="tab-panel">
+              <div class="profile-section">
+                <h3>Dienstleistungsverträge</h3>
+                <div class="contracts-controls" style="margin-bottom: 1rem;">
+                  <button class="btn-small" id="create-contract-btn" data-customer-id="${customer.id}">
+                    <i class="fas fa-plus"></i> Neuer Vertrag
+                  </button>
+                  <button class="btn-small" id="refresh-contracts-btn" data-customer-id="${customer.id}">
+                    <i class="fas fa-sync"></i> Aktualisieren
+                  </button>
+                </div>
+                <div id="contracts-list" class="contracts-list">
+                  <p>Lade Verträge...</p>
+                </div>
+              </div>
+            </div>
+            
             <div id="tab-history" class="tab-panel">
               <div class="profile-section">
                 <h3>Kontakthistorie</h3>
@@ -1891,6 +2601,11 @@
         if (clickedButton) {
           clickedButton.classList.add('active');
         }
+        
+        // Spezielle Aktionen für bestimmte Tabs
+        if (tabName === 'contracts' && currentCustomer) {
+          loadContractsForCustomer(currentCustomer.id);
+        }
       }
 
     // Hilfsfunktion für Kontakthistorie-Labels
@@ -1904,9 +2619,125 @@
     }
 
     // Kunde bearbeiten
-    function editCustomer(customerId) {
-      // TODO: Modal für Bearbeitung öffnen
-      alert('Bearbeitung für Kunde ' + customerId + ' wird implementiert');
+    async function editCustomer(customerId) {
+      try {
+        // Kunde laden
+        const res = await fetch(`/api/customers/${customerId}`);
+        const customer = await res.json();
+        
+        if (!res.ok) throw new Error('Fehler beim Laden des Kunden');
+        
+        // Modal für Bearbeitung erstellen
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+          <div class="modal-content glass" style="max-width: 600px;">
+            <div class="modal-header">
+              <h3>Kunde bearbeiten</h3>
+              <button class="btn-small close-modal">Schließen</button>
+            </div>
+            <div class="modal-body">
+              <form id="edit-customer-form">
+                <div class="form-group">
+                  <label for="edit-name">Name:</label>
+                  <input type="text" id="edit-name" value="${customer.name}" required>
+                </div>
+                <div class="form-group">
+                  <label for="edit-email">E-Mail:</label>
+                  <input type="email" id="edit-email" value="${customer.email || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-phone">Telefon:</label>
+                  <input type="tel" id="edit-phone" value="${customer.phone || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-company">Unternehmen:</label>
+                  <input type="text" id="edit-company" value="${customer.company || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-street">Straße & Hausnummer:</label>
+                  <input type="text" id="edit-street" value="${customer.street_address || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-postal">PLZ:</label>
+                  <input type="text" id="edit-postal" value="${customer.postal_code || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-city">Ort:</label>
+                  <input type="text" id="edit-city" value="${customer.city || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-contract-number">Vertragsnummer:</label>
+                  <input type="text" id="edit-contract-number" value="${customer.contract_number || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-monthly-rate">Monatstarif (€):</label>
+                  <input type="number" id="edit-monthly-rate" step="0.01" value="${customer.monthly_rate || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-notes">Notizen:</label>
+                  <textarea id="edit-notes" rows="3">${customer.notes || ''}</textarea>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn-coral">Speichern</button>
+                  <button type="button" class="btn-small close-modal">Abbrechen</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Event Listeners
+        modal.querySelector('.close-modal').addEventListener('click', () => {
+          document.body.removeChild(modal);
+        });
+        
+        modal.querySelector('#edit-customer-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          await saveCustomer(customerId, modal);
+        });
+        
+      } catch (e) {
+        alert('❌ Fehler beim Laden des Kunden: ' + e.message);
+      }
+    }
+
+    // Kunde speichern
+    async function saveCustomer(customerId, modal) {
+      try {
+        const formData = {
+          name: modal.querySelector('#edit-name').value,
+          email: modal.querySelector('#edit-email').value,
+          phone: modal.querySelector('#edit-phone').value,
+          company: modal.querySelector('#edit-company').value,
+          street_address: modal.querySelector('#edit-street').value,
+          postal_code: modal.querySelector('#edit-postal').value,
+          city: modal.querySelector('#edit-city').value,
+          contract_number: modal.querySelector('#edit-contract-number').value,
+          monthly_rate: parseFloat(modal.querySelector('#edit-monthly-rate').value) || null,
+          notes: modal.querySelector('#edit-notes').value
+        };
+        
+        const res = await fetch(`/api/customers/${customerId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        
+        if (!res.ok) throw new Error('Fehler beim Speichern des Kunden');
+        
+        alert('✅ Kunde erfolgreich gespeichert!');
+        document.body.removeChild(modal);
+        
+        // Kundenprofil aktualisieren
+        await selectCustomer(customerId);
+        
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
     }
 
     // Kunde löschen
@@ -1949,18 +2780,696 @@
       }
     }
 
-    // Suche
-    customerSearch.addEventListener('input', (e) => {
-      const query = e.target.value.toLowerCase();
-      const cards = customersList.querySelectorAll('.customer-card');
-      
-      cards.forEach(card => {
-        const name = card.querySelector('.customer-name').textContent.toLowerCase();
-        const id = card.dataset.id;
-        const visible = name.includes(query) || id.includes(query);
-        card.style.display = visible ? 'block' : 'none';
+    // Suche (Filter in der Kundenliste)
+    function filterCustomersList(query) {
+      const q = String(query || '').toLowerCase();
+      const items = customersList.querySelectorAll('.customer-item');
+      items.forEach(item => {
+        const nameEl = item.querySelector('.customer-item-name');
+        const name = (nameEl ? nameEl.textContent : '').toLowerCase();
+        const id = String(item.dataset.id || '');
+        const matches = q === '' || name.includes(q) || id.includes(q);
+        item.style.display = matches ? '' : 'none';
       });
+    }
+
+    // Live-Filter beim Tippen
+    customerSearch.addEventListener('input', (e) => {
+      filterCustomersList(e.target.value);
     });
+
+    // Enter-Taste löst Filter ebenso aus (und verhindert ungewolltes Submit)
+    customerSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        filterCustomersList(customerSearch.value);
+      }
+    });
+
+    // ===== DIENSTLEISTUNGSVERTRAG-SYSTEM =====
+    
+    // Kooperationsvertrag-Funktionen
+    function showCreateKooperationsvertragModal() {
+      const modal = document.getElementById('kooperationsvertrag-modal');
+      if (modal) {
+        modal.style.display = 'block';
+        loadPartnersForKooperationsvertrag();
+      }
+    }
+    
+    async function loadPartnersForKooperationsvertrag() {
+      try {
+        const res = await fetch('/api/kooperationspartner');
+        const partners = await res.json();
+        
+        const senderSelect = document.getElementById('sender-partner');
+        const receiverSelect = document.getElementById('receiver-partner');
+        
+        if (senderSelect && receiverSelect) {
+          senderSelect.innerHTML = '<option value="">Partner auswählen...</option>';
+          receiverSelect.innerHTML = '<option value="">Partner auswählen...</option>';
+          
+          partners.forEach(partner => {
+            const option = `<option value="${partner.id}">${partner.name} (${partner.email})</option>`;
+            senderSelect.innerHTML += option;
+            receiverSelect.innerHTML += option;
+          });
+        }
+      } catch (e) {
+        console.error('Fehler beim Laden der Partner:', e);
+      }
+    }
+    
+    async function loadKooperationsvertraegeForPartner() {
+      try {
+        const res = await fetch('/api/kooperationsvertraege');
+        const contracts = await res.json();
+        renderKooperationsvertraegeList(contracts);
+      } catch (e) {
+        console.error('Fehler beim Laden der Kooperationsverträge:', e);
+        const listContainer = document.getElementById('kooperationsvertraege-list');
+        if (listContainer) {
+          listContainer.innerHTML = `<p>Fehler beim Laden der Kooperationsverträge: ${e.message}</p>`;
+        }
+      }
+    }
+    
+    async function loadKooperationsvertraegeForCustomer(customerId) {
+      try {
+        const res = await fetch('/api/kooperationsvertraege');
+        const contracts = await res.json();
+        renderKooperationsvertraegeList(contracts);
+      } catch (e) {
+        console.error('Fehler beim Laden der Kooperationsverträge:', e);
+      }
+    }
+    
+    function renderKooperationsvertraegeList(contracts) {
+      const listContainer = document.getElementById('kooperationsvertraege-list');
+      if (!listContainer) return;
+      
+      if (!contracts.length) {
+        listContainer.innerHTML = '<p>Keine Kooperationsverträge vorhanden.</p>';
+        return;
+      }
+      
+      listContainer.innerHTML = contracts.map(contract => `
+        <div class="contract-item" style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: rgba(255,255,255,0.05);" data-id="${contract.id}">
+          <div class="contract-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h4 style="margin: 0;">Vertrag ${contract.contract_number}</h4>
+            <span class="contract-status status-${contract.status}" style="padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">
+              ${window.getStatusLabel ? window.getStatusLabel(contract.status) : (window.getStatusText ? window.getStatusText(contract.status) : contract.status)}
+            </span>
+          </div>
+          <div class="contract-details" style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">
+            <div>Erstellt: ${new Date(contract.created_at).toLocaleDateString('de-DE')}</div>
+            ${contract.zoho_request_id ? `<div>Zoho ID: ${contract.zoho_request_id}</div>` : ''}
+            ${contract.envelope_id ? `<div>DocuSeal ID: ${contract.envelope_id}</div>` : ''}
+          </div>
+          <div class="contract-actions" style="display: flex; gap: 0.5rem;">
+            ${contract.status === 'draft' || contract.status === 'generated' ? `
+              <button class="btn-small send-signature-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-signature"></i> Zur Signatur senden
+              </button>
+            ` : ''}
+            ${contract.status === 'sent' ? `
+              <button class="btn-small check-status-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-sync"></i> Status prüfen
+              </button>
+            ` : ''}
+            ${contract.signed_pdf_filename ? `
+              <button class="btn-small download-signed-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-download"></i> Unterschrieben herunterladen
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+      
+      // Rechtsklick-Event-Listener für Löschen hinzufügen
+      listContainer.querySelectorAll('.contract-item').forEach(item => {
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const contractId = parseInt(item.dataset.id);
+          const contractNumber = item.querySelector('h4').textContent.replace('Vertrag ', '');
+          
+          if (confirm(`Möchten Sie den Kooperationsvertrag "${contractNumber}" wirklich löschen?`)) {
+            deleteKooperationsvertrag(contractId);
+          }
+        });
+      });
+    }
+    
+    async function createKooperationsvertrag(formData) {
+      try {
+        const res = await fetch('/api/kooperationsvertraege', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        
+        if (res.ok) {
+          alert('✅ Kooperationsvertrag erfolgreich erstellt');
+          const modal = document.getElementById('kooperationsvertrag-modal');
+          if (modal) modal.style.display = 'none';
+          // Liste aktualisieren
+          await loadKooperationsvertraegeForPartner();
+        } else {
+          const error = await res.json();
+          alert(`❌ Fehler beim Erstellen: ${error.error}`);
+        }
+      } catch (e) {
+        console.error('Fehler beim Erstellen:', e);
+        alert('❌ Fehler beim Erstellen des Kooperationsvertrags');
+      }
+    }
+
+
+    // Kooperationsvertrag Modal Event Listeners
+    const kooperationsvertragModal = document.getElementById('kooperationsvertrag-modal');
+    const closeKooperationsvertrag = document.getElementById('close-kooperationsvertrag');
+    const cancelKooperationsvertrag = document.getElementById('cancel-kooperationsvertrag');
+    const kooperationsvertragForm = document.getElementById('kooperationsvertrag-form');
+    
+    if (closeKooperationsvertrag) {
+      closeKooperationsvertrag.addEventListener('click', () => {
+        if (kooperationsvertragModal) kooperationsvertragModal.style.display = 'none';
+      });
+    }
+    
+    if (cancelKooperationsvertrag) {
+      cancelKooperationsvertrag.addEventListener('click', () => {
+        if (kooperationsvertragModal) kooperationsvertragModal.style.display = 'none';
+      });
+    }
+    
+    if (kooperationsvertragModal) {
+      kooperationsvertragModal.addEventListener('click', (e) => {
+        if (e.target === kooperationsvertragModal) kooperationsvertragModal.style.display = 'none';
+      });
+    }
+    
+    if (kooperationsvertragForm) {
+      kooperationsvertragForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const formData = {
+          contract_number: document.getElementById('kooperationsvertrag-number').value.trim(),
+          sender_partner_id: parseInt(document.getElementById('sender-partner').value),
+          receiver_partner_id: parseInt(document.getElementById('receiver-partner').value)
+        };
+        
+        await createKooperationsvertrag(formData);
+      });
+    }
+
+    // Event Listeners für Dienstleistungsverträge hinzufügen
+    document.addEventListener('click', async (e) => {
+      if (e.target.id === 'create-contract-btn') {
+        const customerId = parseInt(e.target.dataset.customerId);
+        await showCreateContractModal(customerId);
+      }
+      
+      if (e.target.id === 'refresh-contracts-btn') {
+        const customerId = parseInt(e.target.dataset.customerId);
+        await loadContractsForCustomer(customerId);
+      }
+      
+      // generate-pdf-btn
+      if (e.target.classList.contains('generate-pdf-btn') || e.target.closest('.generate-pdf-btn')) {
+        const button = e.target.classList.contains('generate-pdf-btn') ? e.target : e.target.closest('.generate-pdf-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        if (contractId) {
+          // Prüfen, ob es sich um einen Kooperationsvertrag oder Dienstleistungsvertrag handelt
+          const contractItem = button.closest('.contract-item');
+          const contractsList = button.closest('#partner-contracts-list');
+          if (contractsList) {
+            // Kooperationsvertrag
+            await generateKooperationsvertragPDF(parseInt(contractId));
+          } else {
+            // Dienstleistungsvertrag
+            await generateContractPDF(parseInt(contractId));
+          }
+        }
+      }
+      
+      // send-docuseal-btn oder send-signature-btn (für Dienstleistungsverträge bei Kunden)
+      if (e.target.classList.contains('send-docuseal-btn') || e.target.closest('.send-docuseal-btn') ||
+          e.target.classList.contains('send-signature-btn') || e.target.closest('.send-signature-btn')) {
+        const button = e.target.classList.contains('send-docuseal-btn') || e.target.classList.contains('send-signature-btn') 
+          ? e.target : e.target.closest('.send-docuseal-btn') || e.target.closest('.send-signature-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        console.log('DocuSeal Button clicked, contractId:', contractId);
+        
+        // Prüfe ob es sich um einen Kooperationsvertrag im Partner-Modal handelt
+        if (contractId) {
+          const partnerProfile = document.getElementById('partner-profile');
+          // Wenn Partner-Modal offen ist, lass den anderen Event-Listener das handhaben
+          if (modal && modal.dataset.partnerId) {
+            console.log('Partner Modal ist offen, überspringe diesen Listener');
+            return; // Exit hier, damit der andere Event-Listener (Zeile 3554) das Event verarbeitet
+          }
+          
+          // Nur für Dienstleistungsverträge (nicht im Partner-Modal)
+          console.log('Verarbeite Dienstleistungsvertrag');
+          await sendContractForSignature(parseInt(contractId));
+        }
+      }
+      
+      // download-signed-btn
+      if (e.target.classList.contains('download-signed-btn') || e.target.closest('.download-signed-btn')) {
+        const button = e.target.classList.contains('download-signed-btn') ? e.target : e.target.closest('.download-signed-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        if (contractId) {
+          await downloadSignedContract(parseInt(contractId));
+        }
+      }
+      
+      // check-status-btn
+      if (e.target.classList.contains('check-status-btn') || e.target.closest('.check-status-btn')) {
+        const button = e.target.classList.contains('check-status-btn') ? e.target : e.target.closest('.check-status-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        if (contractId) {
+          await checkContractStatus(parseInt(contractId));
+        }
+      }
+      
+      // view-contract-btn
+      if (e.target.classList.contains('view-contract-btn') || e.target.closest('.view-contract-btn')) {
+        const button = e.target.classList.contains('view-contract-btn') ? e.target : e.target.closest('.view-contract-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        if (contractId) {
+          await viewContract(parseInt(contractId));
+        }
+      }
+    });
+
+    // Verträge für Kunde laden
+    async function loadContractsForCustomer(customerId) {
+      try {
+        const contractsList = document.getElementById('contracts-list');
+        contractsList.innerHTML = '<p>Lade Verträge...</p>';
+        
+        const res = await fetch('/api/dienstleistungsvertraege');
+        if (!res.ok) throw new Error('Fehler beim Laden der Verträge');
+        
+        const allContracts = await res.json();
+        const customerContracts = allContracts.filter(c => c.customer_id === customerId);
+        
+        renderContractsList(customerContracts);
+      } catch (e) {
+        console.error('Fehler beim Laden der Verträge:', e);
+        document.getElementById('contracts-list').innerHTML = `<p>Fehler: ${e.message}</p>`;
+      }
+    }
+
+    // Verträge-Liste rendern
+    function renderContractsList(contracts) {
+      const contractsList = document.getElementById('contracts-list');
+      
+      if (!contracts.length) {
+        contractsList.innerHTML = '<p>Keine Verträge vorhanden.</p>';
+        return;
+      }
+      
+      contractsList.innerHTML = contracts.map(contract => `
+        <div class="contract-item" style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: rgba(255,255,255,0.05);" data-id="${contract.id}">
+          <div class="contract-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h4 style="margin: 0;">Vertrag ${contract.contract_number}</h4>
+            <span class="contract-status status-${contract.status}" style="padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">
+              ${window.getStatusLabel ? window.getStatusLabel(contract.status) : (window.getStatusText ? window.getStatusText(contract.status) : contract.status)}
+            </span>
+          </div>
+          <div class="contract-details" style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">
+            <div>Erstellt: ${new Date(contract.created_at).toLocaleDateString('de-DE')}</div>
+            <div>Monatstarif: ${contract.monthly_rate ? contract.monthly_rate + ' €' : 'Nicht festgelegt'}</div>
+            <div>Tagessatz: ${contract.daily_rate ? contract.daily_rate + ' €' : 'Nicht festgelegt'}</div>
+            ${contract.zoho_request_id ? `<div>Zoho ID: ${contract.zoho_request_id}</div>` : ''}
+          </div>
+          <div class="contract-actions" style="display: flex; gap: 0.5rem;">
+            ${contract.status === 'draft' ? `
+              <button class="btn-small send-signature-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-signature"></i> Zur Signatur senden
+              </button>
+            ` : ''}
+            ${contract.status === 'sent' ? `
+              <button class="btn-small check-status-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-sync"></i> Status prüfen
+              </button>
+            ` : ''}
+            ${contract.signed_pdf_filename ? `
+              <button class="btn-small download-signed-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-download"></i> Unterschrieben herunterladen
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+      
+      // Rechtsklick-Event-Listener für Löschen hinzufügen
+      contractsList.querySelectorAll('.contract-item').forEach(item => {
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const contractId = parseInt(item.dataset.id);
+          const contractNumber = item.querySelector('h4').textContent.replace('Vertrag ', '');
+          
+          if (confirm(`Möchten Sie den Dienstleistungsvertrag "${contractNumber}" wirklich löschen?`)) {
+            deleteContract(contractId);
+          }
+        });
+      });
+    }
+
+    // Modal für Vertragserstellung anzeigen
+    async function showCreateContractModal(customerId) {
+      // Kooperationspartner laden
+      const partnersRes = await fetch('/api/kooperationspartner');
+      const partners = await partnersRes.json();
+      
+      if (!partners.length) {
+        alert('Keine Kooperationspartner vorhanden. Bitte zuerst einen Kooperationspartner anlegen.');
+        return;
+      }
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'block';
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 600px;">
+          <div class="modal-header">
+            <h3>Neuer Dienstleistungsvertrag</h3>
+            <button class="btn-small close-modal">Schließen</button>
+          </div>
+          <div class="modal-body">
+            <form id="create-contract-form">
+              <div class="form-group">
+                <label for="contract-number">Vertragsnummer:</label>
+                <input type="text" id="contract-number" required placeholder="z.B. DLV-2024-001">
+              </div>
+              <div class="form-group">
+                <label for="contract-partner">Kooperationspartner:</label>
+                <select id="contract-partner" required>
+                  <option value="">Bitte wählen...</option>
+                  ${partners.map(partner => `
+                    <option value="${partner.id}">${partner.company_name || partner.name}</option>
+                  `).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="monthly-rate">Monatstarif (€):</label>
+                <input type="number" id="monthly-rate" step="0.01" placeholder="2500.00">
+                <small style="color: #666; font-size: 0.8rem;">Tagessatz wird automatisch berechnet (Monatstarif ÷ 30)</small>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn-coral">Vertrag erstellen</button>
+                <button type="button" class="btn-small close-modal">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      // Event Listeners
+      modal.querySelector('.close-modal').addEventListener('click', () => {
+        document.body.removeChild(modal);
+      });
+      
+      modal.querySelector('#create-contract-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await createContract(customerId, modal);
+      });
+    }
+
+    // Vertrag erstellen
+    async function createContract(customerId, modal) {
+      try {
+        const formData = {
+          customer_id: customerId,
+          kooperationspartner_id: parseInt(modal.querySelector('#contract-partner').value),
+          contract_number: modal.querySelector('#contract-number').value,
+          monthly_rate: parseFloat(modal.querySelector('#monthly-rate').value) || null
+        };
+        
+        const res = await fetch('/api/dienstleistungsvertraege', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        
+        if (!res.ok) throw new Error('Fehler beim Erstellen des Vertrags');
+        
+        alert('✅ Vertrag erfolgreich erstellt!');
+        document.body.removeChild(modal);
+        await loadContractsForCustomer(customerId);
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
+
+    // PDF generieren
+    async function generateContractPDF(contractId) {
+      try {
+        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}/generate-pdf`, {
+          method: 'POST'
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'PDF-Generierung fehlgeschlagen');
+        
+        // PDF in neuem Tab öffnen (Data URL kann direkt verwendet werden)
+        window.open(data.pdf_base64, '_blank');
+        
+        alert('✅ PDF erfolgreich generiert!');
+        
+        // Verträge aktualisieren um neuen Status anzuzeigen
+        const contractsList = document.getElementById('contracts-list');
+        if (contractsList) {
+          const customerId = currentCustomer?.id;
+          if (customerId) {
+            await loadContractsForCustomer(customerId);
+          }
+        }
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
+
+    // Zur Signatur senden (unsere eigene Signatur-Funktionalität)
+    async function sendContractForSignature(contractId) {
+      if (!confirm('Vertrag zur digitalen Signatur per E-Mail an Kunde und Partner senden?')) return;
+      
+      try {
+        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}/send-for-signature`, {
+          method: 'POST'
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Fehler beim Senden');
+        
+        if (data.success) {
+          alert('✅ Vertrag erfolgreich zur Signatur gesendet!\n\nDer Kunde und der Kooperationspartner erhalten jeweils eine E-Mail mit einem Link zur digitalen Unterschrift.');
+        } else {
+          throw new Error(data.error || 'Unbekannter Fehler');
+        }
+        
+        // Verträge aktualisieren
+        const contractsList = document.getElementById('contracts-list');
+        if (contractsList) {
+          const customerId = currentCustomer?.id;
+          if (customerId) {
+            await loadContractsForCustomer(customerId);
+          }
+        }
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
+
+    // Download unterschriebenes PDF
+    async function downloadSignedContract(contractId) {
+      try {
+        const downloadUrl = `/api/dienstleistungsvertraege/${contractId}/download-signed-pdf`;
+        window.open(downloadUrl, '_blank');
+      } catch (e) {
+        alert('❌ Fehler beim Herunterladen: ' + e.message);
+      }
+    }
+
+    // Status prüfen
+    async function checkContractStatus(contractId) {
+      try {
+        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}/check-status`, {
+          method: 'POST'
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Status-Prüfung fehlgeschlagen');
+        
+        if (data.success) {
+          alert(`✅ Status aktualisiert!\n\nNeuer Status: ${data.status}\n\n${data.message}`);
+          
+          // Verträge aktualisieren
+          const contractsList = document.getElementById('contracts-list');
+          if (contractsList) {
+            const customerId = currentCustomer?.id;
+            if (customerId) {
+              await loadContractsForCustomer(customerId);
+            }
+          }
+        } else {
+          throw new Error(data.error || 'Unbekannter Fehler');
+        }
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
+
+    // Dienstleistungsvertrag löschen
+    async function deleteContract(contractId) {
+      try {
+        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}`, {
+          method: 'DELETE'
+        });
+        
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success) {
+            alert('✅ Dienstleistungsvertrag erfolgreich gelöscht');
+            // Liste aktualisieren - aktuellen Kunden neu laden
+            const customerProfile = document.getElementById('customer-profile');
+            if (customerProfile && customerProfile.dataset.customerId) {
+              const customerId = parseInt(customerProfile.dataset.customerId);
+              await loadContractsForCustomer(customerId);
+            } else {
+              // Falls kein Kunde ausgewählt, alle Verträge neu laden
+              const res = await fetch('/api/dienstleistungsvertraege');
+              const allContracts = await res.json();
+              renderContractsList(allContracts);
+            }
+          } else {
+            alert(`❌ Fehler beim Löschen: ${result.error || 'Unbekannter Fehler'}`);
+          }
+        } else {
+          const error = await res.json();
+          alert(`❌ Fehler beim Löschen: ${error.error || 'HTTP Fehler'}`);
+        }
+      } catch (e) {
+        console.error('Fehler beim Löschen:', e);
+        alert('❌ Fehler beim Löschen des Dienstleistungsvertrags');
+      }
+    }
+    
+    // Kooperationsvertrag löschen
+    async function deleteKooperationsvertrag(contractId) {
+      try {
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}`, {
+          method: 'DELETE'
+        });
+        
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success) {
+            alert('✅ Kooperationsvertrag erfolgreich gelöscht');
+            // Liste aktualisieren
+            const partnerProfile = document.getElementById('partner-profile');
+            const kooperationsvertraegeList = document.getElementById('kooperationsvertraege-list');
+            const partnerContractsList = document.getElementById('partner-contracts-list');
+            
+            if (partnerProfile && partnerProfile.dataset.partnerId) {
+              // Wenn ein Partner-Profil angezeigt wird, dessen Verträge neu laden
+              const partnerId = parseInt(partnerProfile.dataset.partnerId);
+              await loadPartnerKooperationsvertraege(partnerId);
+            } else if (kooperationsvertraegeList) {
+              // Allgemeine Kooperationsverträge-Liste neu laden
+              await loadKooperationsvertraegeForPartner();
+            } else if (partnerContractsList) {
+              // Partner-Verträge neu laden
+              const currentPartner = window.currentPartner;
+              if (currentPartner && currentPartner.id) {
+                await loadPartnerKooperationsvertraege(currentPartner.id);
+              }
+            }
+          } else {
+            alert(`❌ Fehler beim Löschen: ${result.error || 'Unbekannter Fehler'}`);
+          }
+        } else {
+          const error = await res.json();
+          alert(`❌ Fehler beim Löschen: ${error.error || 'HTTP Fehler'}`);
+        }
+      } catch (e) {
+        console.error('Fehler beim Löschen:', e);
+        alert('❌ Fehler beim Löschen des Kooperationsvertrags');
+      }
+    }
+    
+    // Vertrag anzeigen
+    async function viewContract(contractId) {
+      try {
+        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}`);
+        const contract = await res.json();
+        
+        if (!res.ok) throw new Error('Fehler beim Laden des Vertrags');
+        
+        // Modal für Vertragsdetails
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+          <div class="modal-content glass" style="max-width: 800px;">
+            <div class="modal-header">
+              <h3>Vertrag ${contract.contract_number}</h3>
+              <button class="btn-small close-modal">Schließen</button>
+            </div>
+            <div class="modal-body">
+              <div class="contract-details">
+                <div class="detail-row">
+                  <label>Status:</label>
+                  <span class="status-${contract.status}">${window.getStatusLabel ? window.getStatusLabel(contract.status) : (window.getStatusText ? window.getStatusText(contract.status) : contract.status)}</span>
+                </div>
+                <div class="detail-row">
+                  <label>Erstellt:</label>
+                  <span>${new Date(contract.created_at).toLocaleString('de-DE')}</span>
+                </div>
+                <div class="detail-row">
+                  <label>Monatstarif:</label>
+                  <span>${contract.monthly_rate ? contract.monthly_rate + ' €' : 'Nicht festgelegt'}</span>
+                </div>
+                <div class="detail-row">
+                  <label>Tagessatz:</label>
+                  <span>${contract.daily_rate ? contract.daily_rate + ' €' : 'Nicht festgelegt'}</span>
+                </div>
+                <div class="detail-row">
+                  <label>Ort:</label>
+                  <span>${contract.contract_location || 'Nicht festgelegt'}</span>
+                </div>
+                ${contract.zoho_request_id ? `
+                  <div class="detail-row">
+                    <label>DocuSeal ID:</label>
+                    <span>${contract.zoho_request_id}</span>
+                  </div>
+                ` : ''}
+                ${contract.signed_pdf_filename ? `
+                  <div class="detail-row">
+                    <label>Unterschriebenes PDF:</label>
+                    <span>${contract.signed_pdf_filename}</span>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        modal.querySelector('.close-modal').addEventListener('click', () => {
+          document.body.removeChild(modal);
+        });
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
 
     // Befragungsbogen-Kundenauswahl
     const customerSelect = document.getElementById('customer-select');
@@ -2018,6 +3527,342 @@
     };
     
     }); // Ende DOMContentLoaded
+    
+    async function loadPartnerKooperationsvertraege(partnerId) {
+      try {
+        const res = await fetch(`/api/kooperationspartner/${partnerId}/kooperationsvertraege`);
+        const contracts = await res.json();
+        renderPartnerContractsList(contracts);
+      } catch (e) {
+        console.error('Fehler beim Laden der Kooperationsverträge:', e);
+        const listContainer = document.getElementById('partner-contracts-list');
+        if (listContainer) {
+          listContainer.innerHTML = `<p>Fehler beim Laden der Kooperationsverträge: ${e.message}</p>`;
+        }
+      }
+    }
+    
+    function renderPartnerContractsList(contracts) {
+      const listContainer = document.getElementById('partner-contracts-list');
+      if (!listContainer) {
+        console.error('partner-contracts-list Element nicht gefunden');
+        return;
+      }
+      
+      if (!contracts || !contracts.length) {
+        listContainer.innerHTML = '<p>Keine Kooperationsverträge vorhanden.</p>';
+        return;
+      }
+      
+      listContainer.innerHTML = contracts.map(contract => `
+        <div class="contract-item" style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: rgba(255,255,255,0.05);" data-id="${contract.id}">
+          <div class="contract-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h4 style="margin: 0;">Vertrag ${contract.contract_number}</h4>
+            <span class="contract-status status-${contract.status}" style="padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">
+              ${window.getStatusLabel ? window.getStatusLabel(contract.status) : (window.getStatusText ? window.getStatusText(contract.status) : contract.status)}
+            </span>
+          </div>
+          <div class="contract-details" style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">
+            <div>Erstellt: ${new Date(contract.created_at).toLocaleDateString('de-DE')}</div>
+            ${contract.zoho_request_id ? `<div>Zoho ID: ${contract.zoho_request_id}</div>` : ''}
+            ${contract.envelope_id ? `<div>DocuSeal ID: ${contract.envelope_id}</div>` : ''}
+          </div>
+          <div class="contract-actions" style="display: flex; gap: 0.5rem;">
+            ${contract.status === 'draft' || contract.status === 'generated' ? `
+              <button class="btn-small send-signature-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-signature"></i> Zur Signatur senden
+              </button>
+            ` : ''}
+            ${contract.status === 'sent' ? `
+              <button class="btn-small check-status-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-sync"></i> Status prüfen
+              </button>
+            ` : ''}
+            ${contract.signed_pdf_filename ? `
+              <button class="btn-small download-signed-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-download"></i> Unterschrieben herunterladen
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+      
+      // Rechtsklick-Event-Listener für Löschen hinzufügen
+      listContainer.querySelectorAll('.contract-item').forEach(item => {
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const contractId = parseInt(item.dataset.id);
+          const contractNumber = item.querySelector('h4').textContent.replace('Vertrag ', '');
+          
+          if (confirm(`Möchten Sie den Kooperationsvertrag "${contractNumber}" wirklich löschen?`)) {
+            deleteKooperationsvertrag(contractId);
+          }
+        });
+      });
+    }
+    
+    async function createPartnerKooperationsvertrag(partnerId, formData) {
+      try {
+        const res = await fetch(`/api/kooperationspartner/${partnerId}/kooperationsvertraege`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        
+        if (res.ok) {
+          alert('✅ Kooperationsvertrag erfolgreich erstellt');
+          const modal = document.getElementById('kooperationsvertrag-modal');
+          if (modal) modal.style.display = 'none';
+          // Liste aktualisieren
+          await loadPartnerKooperationsvertraege(partnerId);
+        } else {
+          const error = await res.json();
+          alert(`❌ Fehler beim Erstellen: ${error.error}`);
+        }
+      } catch (e) {
+        console.error('Fehler beim Erstellen:', e);
+        alert('❌ Fehler beim Erstellen des Kooperationsvertrags');
+      }
+    }
+
+    // Event Listeners für Partner-Kontrakte (im Profil)
+    document.addEventListener('click', async (e) => {
+      if (e.target.id === 'create-partner-contract-btn' || e.target.closest('#create-partner-contract-btn')) {
+        const button = e.target.id === 'create-partner-contract-btn' ? e.target : e.target.closest('#create-partner-contract-btn');
+        const partnerId = button.dataset.partnerId;
+        if (partnerId) {
+          const contractNumber = prompt('Vertragsnummer eingeben:');
+          if (contractNumber) {
+            await createPartnerKooperationsvertrag(partnerId, { contract_number: contractNumber });
+            // Liste aktualisieren
+            await loadPartnerKooperationsvertraege(partnerId);
+            // Profil aktualisieren
+            await selectPartner(parseInt(partnerId));
+          }
+        }
+      }
+      
+      if (e.target.id === 'refresh-partner-contracts-btn' || e.target.closest('#refresh-partner-contracts-btn')) {
+        const button = e.target.id === 'refresh-partner-contracts-btn' ? e.target : e.target.closest('#refresh-partner-contracts-btn');
+        const partnerId = button.dataset.partnerId;
+        if (partnerId) {
+          await loadPartnerKooperationsvertraege(partnerId);
+        }
+      }
+      
+      // Kooperationsvertrag-Buttons (innerhalb des Partner-Profils)
+      if (e.target.closest('.view-contract-btn')) {
+        const button = e.target.closest('.view-contract-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        // Prüfe ob es sich im Partner-Profil befindet
+        const partnerProfile = document.getElementById('partner-profile');
+        if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
+          // Es ist ein Kooperationsvertrag
+          await viewKooperationsvertrag(contractId);
+        } else {
+          // Es ist ein Dienstleistungsvertrag
+          await viewContract(parseInt(contractId));
+        }
+      }
+      
+      if (e.target.closest('.send-docuseal-btn') || e.target.closest('.send-signature-btn')) {
+        const button = e.target.closest('.send-docuseal-btn') || e.target.closest('.send-signature-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        if (contractId) {
+          // Prüfe ob es sich im Partner-Profil befindet
+          const partnerProfile = document.getElementById('partner-profile');
+          if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
+            // Es ist ein Kooperationsvertrag
+            await sendKooperationsvertragForSignature(parseInt(contractId));
+            // Liste aktualisieren
+            if (currentPartner) {
+              await loadPartnerKooperationsvertraege(currentPartner.id);
+            }
+          } else {
+            // Es ist ein Dienstleistungsvertrag
+            await sendContractForSignature(parseInt(contractId));
+          }
+        }
+      }
+      
+      if (e.target.closest('.check-status-btn')) {
+        const button = e.target.closest('.check-status-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        if (contractId) {
+          // Prüfe ob es sich im Partner-Profil befindet
+          const partnerProfile = document.getElementById('partner-profile');
+          if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
+            // Es ist ein Kooperationsvertrag
+            await checkKooperationsvertragStatus(parseInt(contractId));
+            // Liste aktualisieren
+            if (currentPartner) {
+              await loadPartnerKooperationsvertraege(currentPartner.id);
+            }
+          } else {
+            // Es ist ein Dienstleistungsvertrag
+            await checkContractStatus(parseInt(contractId));
+          }
+        }
+      }
+      
+      if (e.target.closest('.download-signed-btn')) {
+        const button = e.target.closest('.download-signed-btn');
+        const contractId = button.dataset.id || button.dataset.contractId;
+        // Prüfe ob es sich im Partner-Profil befindet
+        const partnerProfile = document.getElementById('partner-profile');
+        if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
+          // Es ist ein Kooperationsvertrag
+          await downloadSignedKooperationsvertrag(contractId);
+        } else {
+          // Es ist ein Dienstleistungsvertrag
+          await downloadSignedContract(parseInt(contractId));
+        }
+      }
+    });
+
+    // Kooperationsvertrag-Funktionen
+    async function viewKooperationsvertrag(contractId) {
+      try {
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}`);
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        const contract = await res.json();
+        
+        // Wenn unterschriebenes PDF vorhanden ist, öffne es
+        if (contract.signed_pdf_filename) {
+          window.open(`/api/kooperationsvertraege/${contractId}/download-signed`, '_blank');
+        } else if (contract.pdf_filename) {
+          // Falls nur das ursprüngliche PDF vorhanden ist
+          window.open(`/api/kooperationsvertraege/${contractId}/download-pdf`, '_blank');
+        } else {
+          // Falls kein PDF vorhanden ist, zeige Details
+          let details = `
+            <h4>Kooperationsvertrag Details</h4>
+            <p><strong>Vertragsnummer:</strong> ${contract.contract_number}</p>
+            <p><strong>Erstellt:</strong> ${new Date(contract.created_at).toLocaleDateString('de-DE')}</p>
+            <p><strong>Status:</strong> ${window.getStatusLabel ? window.getStatusLabel(contract.status) : (window.getStatusText ? window.getStatusText(contract.status) : contract.status)}</p>
+          `;
+          
+          if (contract.envelope_id) {
+            details += `<p><strong>DocuSeal ID:</strong> ${contract.envelope_id}</p>`;
+          }
+          
+          if (!contract.pdf_filename) {
+            details += `<p><strong>Hinweis:</strong> PDF noch nicht generiert. Bitte zuerst PDF generieren.</p>`;
+          }
+          
+          alert(details);
+        }
+      } catch (e) {
+        console.error('Fehler beim Laden:', e);
+        alert('❌ Fehler beim Laden des Kooperationsvertrags: ' + e.message);
+      }
+    }
+    
+    async function generateKooperationsvertragPDF(contractId) {
+      try {
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}/generate-pdf`, {
+          method: 'POST'
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'PDF-Generierung fehlgeschlagen');
+        
+        // PDF öffnen falls verfügbar
+        if (data.pdf_url) {
+          window.open(data.pdf_url, '_blank');
+        }
+        
+        alert('✅ PDF erfolgreich generiert!');
+        
+        // Verträge aktualisieren um neuen Status anzuzeigen
+        const partnerContractsList = document.getElementById('partner-contracts-list');
+        if (partnerContractsList && currentPartner) {
+          await loadPartnerKooperationsvertraege(currentPartner.id);
+        }
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
+    
+    async function sendKooperationsvertragForSignature(contractId) {
+      try {
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}/send-docuseal`, {
+          method: 'POST'
+        });
+        
+        if (res.ok) {
+          const result = await res.json();
+          alert('✅ Kooperationsvertrag erfolgreich zur Signatur gesendet');
+          // Liste aktualisieren
+          const partnerProfile = document.getElementById('partner-profile');
+          const partnerId = modal.dataset.partnerId;
+          if (partnerId) {
+            await loadPartnerKooperationsvertraege(partnerId);
+          }
+        } else {
+          const error = await res.json();
+          alert(`❌ Fehler beim Senden: ${error.error}`);
+        }
+      } catch (e) {
+        console.error('Fehler beim Senden:', e);
+        alert('❌ Fehler beim Senden zur Signatur');
+      }
+    }
+    
+    async function checkKooperationsvertragStatus(contractId) {
+      try {
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}/check-status`, {
+          method: 'POST'
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Status-Prüfung fehlgeschlagen');
+        
+        if (data.success) {
+          alert(`✅ Status aktualisiert!\n\nNeuer Status: ${data.status}\n\n${data.message}`);
+          
+          // Liste aktualisieren
+          const partnerProfile = document.getElementById('partner-profile');
+          const partnerId = modal.dataset.partnerId;
+          if (partnerId) {
+            await loadPartnerKooperationsvertraege(partnerId);
+          }
+        } else {
+          throw new Error(data.error || 'Unbekannter Fehler');
+        }
+      } catch (e) {
+        alert('❌ Fehler: ' + e.message);
+      }
+    }
+    
+    async function downloadSignedKooperationsvertrag(contractId) {
+      try {
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}/download-signed`);
+        
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `kooperationsvertrag_${contractId}_signed.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } else {
+          const error = await res.json();
+          alert(`❌ Fehler beim Download: ${error.error}`);
+        }
+      } catch (e) {
+        console.error('Fehler beim Download:', e);
+        alert('❌ Fehler beim Download des unterschriebenen Dokuments');
+      }
+    }
+
   </script>
 </body>
 </html>

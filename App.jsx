@@ -19,7 +19,7 @@ const CONFIG = {
     fuehrerschein: 125,
     deutsch: { Grund: 150, Mittel: 300, Gut: 400 },
   },
-  foerderung: { 0: 0, 1: 0, 2: 347, 3: 599, 4: 800, 5: 990, steuer: 333, verhinderung: 295 },
+  foerderung: { 0: 0, 1: 0, 2: 347, 3: 599, 4: 800, 5: 990, steuer: 333, verhinderung: 295, entlastung: 131 },
 };
 
 function formatEUR(value) {
@@ -38,7 +38,7 @@ export default function HelpCareRechner() {
   const [nacht, setNacht] = useState(false);
   const [fuehrerschein, setFuehrerschein] = useState(false);
   const [deutsch, setDeutsch] = useState("Grund");
-  const [foerderungen, setFoerderungen] = useState({ pflegegeld: true, steuer: false, verhinderung: false });
+  const [foerderungen, setFoerderungen] = useState({ pflegegeld: true, steuer: false, verhinderung: false, entlastung: false });
   const [twoPersons, setTwoPersons] = useState(false);
   const [manualDiscount, setManualDiscount] = useState(0);
   const [anforderungen, setAnforderungen] = useState(0);
@@ -58,6 +58,7 @@ export default function HelpCareRechner() {
     const personsSelected = twoPersons ? 2 : 1;
     if (foerderungen.steuer) foerd += CONFIG.foerderung.steuer * personsSelected;
     if (foerderungen.verhinderung) foerd += CONFIG.foerderung.verhinderung * personsSelected;
+    if (foerderungen.entlastung) foerd += CONFIG.foerderung.entlastung * personsSelected;
 
     return { netto: basis, mitFoerderung: Math.max(basis - foerd, 0), foerd, pflegegeldSum, personsSelected };
   }, [pflegestufe1, pflegestufe2, nacht, fuehrerschein, deutsch, foerderungen, twoPersons, manualDiscount]);
@@ -176,6 +177,7 @@ export default function HelpCareRechner() {
     const pflegegeldAmount = foerderungen.pflegegeld ? result.pflegegeldSum : 0;
     const verhinderungAmount = foerderungen.verhinderung ? CONFIG.foerderung.verhinderung * personsSelected : 0;
     const steuerAmount = foerderungen.steuer ? CONFIG.foerderung.steuer * personsSelected : 0;
+    const entlastungAmount = foerderungen.entlastung ? CONFIG.foerderung.entlastung * personsSelected : 0;
 
     const isNeutral = String(variant) === 'neutral';
 
@@ -189,6 +191,7 @@ export default function HelpCareRechner() {
       pflegegeldRabat: isNeutral ? "" : ("- " + formatEUR(pflegegeldAmount)),
       verhinderungspflege: isNeutral ? "" : ("- " + formatEUR(verhinderungAmount)),
       steuererleichterung: isNeutral ? "" : ("- " + formatEUR(steuerAmount)),
+      entlastungsbetrag: isNeutral ? "" : ("- " + formatEUR(entlastungAmount)),
       preisMitFoerderung: isNeutral ? formatEUR(CONFIG.fixpreis + (Number(anforderungen) || 0)) : formatEUR(result.mitFoerderung),
       neutralDeductionsHidden: isNeutral ? "hidden=\"hidden\"" : "",
       standardSectionHidden: isNeutral ? "hidden=\"hidden\"" : "",
@@ -262,6 +265,7 @@ export default function HelpCareRechner() {
     const pflegegeldAmount = foerderungen.pflegegeld ? result.pflegegeldSum : 0;
     const verhinderungAmount = foerderungen.verhinderung ? CONFIG.foerderung.verhinderung * personsSelected : 0;
     const steuerAmount = foerderungen.steuer ? CONFIG.foerderung.steuer * personsSelected : 0;
+    const entlastungAmount = foerderungen.entlastung ? CONFIG.foerderung.entlastung * personsSelected : 0;
 
     const isNeutral = String(variant) === 'neutral';
     const rawHtml = buildHTMLFromAngebotTemplate({
@@ -273,6 +277,7 @@ export default function HelpCareRechner() {
       pflegegeldRabat: isNeutral ? "" : ("- " + formatEUR(pflegegeldAmount)),
       verhinderungspflege: isNeutral ? "" : ("- " + formatEUR(verhinderungAmount)),
       steuererleichterung: isNeutral ? "" : ("- " + formatEUR(steuerAmount)),
+      entlastungsbetrag: isNeutral ? "" : ("- " + formatEUR(entlastungAmount)),
       preisMitFoerderung: isNeutral ? formatEUR(CONFIG.fixpreis + (Number(anforderungen) || 0)) : formatEUR(result.mitFoerderung),
       neutralDeductionsHidden: isNeutral ? "hidden=\"hidden\"" : "",
       standardSectionHidden: isNeutral ? "hidden=\"hidden\"" : "",
@@ -409,8 +414,11 @@ export default function HelpCareRechner() {
           <label style={{display:'block',marginBottom:'6px'}}> 
             <input type="checkbox" checked={foerderungen.steuer} onChange={() => toggleFoerd("steuer")} /> Steuervorteil ({formatEUR(CONFIG.foerderung.steuer)})
           </label>
-          <label style={{display:'block'}}> 
+          <label style={{display:'block',marginBottom:'6px'}}> 
             <input type="checkbox" checked={foerderungen.verhinderung} onChange={() => toggleFoerd("verhinderung")} /> Verhinderungspflege ({formatEUR(CONFIG.foerderung.verhinderung)})
+          </label>
+          <label style={{display:'block'}}> 
+            <input type="checkbox" checked={foerderungen.entlastung} onChange={() => toggleFoerd("entlastung")} /> Entlastungsbetrag nach § 45b SGB XI ({formatEUR(CONFIG.foerderung.entlastung)})
           </label>
         </section>
 

@@ -19,9 +19,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps (optional minimal)
+# System deps (including WeasyPrint dependencies)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libgobject-2.0-0 \
+    libglib2.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
   && rm -rf /var/lib/apt/lists/*
 
 # Python deps

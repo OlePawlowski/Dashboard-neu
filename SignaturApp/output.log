@@ -1,0 +1,1356 @@
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5002
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 13:33:39] "GET / HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 13:34:16] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:34:16] "GET /static/js/dashboard.js HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:34:16] "GET /static/css/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:34:16] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 13:34:16] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:34:17] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:34:19] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:165: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 13:34:29] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 13:34:31] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:34:31] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 13:34:33] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:291: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 13:34:39] "GET /sign/RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6 HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:503: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 13:34:44] "POST /api/signature HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:556: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 13:34:45] "GET /api/download/RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6 HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:37:31] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:37:31] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:37:31] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:37:31] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:37:32] "GET /api/contracts HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Test
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: aytznkdcFt9khT_UcGuEStVwJrLrchgPOU7b3iwYuno_Ywfg67SKqG1ZHHIREJg_
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_aytznkdcFt9khT_UcGuEStVwJrLrchgPOU7b3iwYuno_Ywfg67SKqG1ZHHIREJg_.html
+✅ Dokument gespeichert: uploads/contract_aytznkdcFt9khT_UcGuEStVwJrLrchgPOU7b3iwYuno_Ywfg67SKqG1ZHHIREJg_.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/aytznkdcFt9khT_UcGuEStVwJrLrchgPOU7b3iwYuno_Ywfg67SKqG1ZHHIREJg_
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Test
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6.html
+✅ Dokument gespeichert: uploads/contract_RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: aytznkdcFt9khT_UcGuEStVwJrLrchgPOU7b3iwYuno_Ywfg67SKqG1ZHHIREJg_
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: RqZA_10q1LkFHGI9V5sHzlLVmFMGlizWZHks7bxo1-puGuf_vFNmFJ8m345c4NV6
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 13:40:27] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:40:27] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:40:27] "GET /static/js/dashboard.js HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:40:27] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:40:27] "GET /static/js/dashboard.js HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:40:27] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:40:29] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:40:32] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 13:40:46] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 13:40:48] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:40:48] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:292: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 13:40:58] "GET /sign/DFjI7ytastXECHOP43yV0Nsn6fQ4RzYV1kps2tOMlC_Wd0kTGWL4MbflSFJeoeOD HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:13] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:13] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:44:13] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:44:13] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:19] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:21] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:37] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 13:44:37] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 13:44:39] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:40] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:44:47] "GET /sign/V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:504: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 13:44:57] "POST /api/signature HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:557: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 13:45:00] "GET /api/download/V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:47:43] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:47:43] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:47:43] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 13:47:43] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:47:48] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 13:47:51] "GET /api/download/V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Test
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: DFjI7ytastXECHOP43yV0Nsn6fQ4RzYV1kps2tOMlC_Wd0kTGWL4MbflSFJeoeOD
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_DFjI7ytastXECHOP43yV0Nsn6fQ4RzYV1kps2tOMlC_Wd0kTGWL4MbflSFJeoeOD.html
+✅ Dokument gespeichert: uploads/contract_DFjI7ytastXECHOP43yV0Nsn6fQ4RzYV1kps2tOMlC_Wd0kTGWL4MbflSFJeoeOD.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/DFjI7ytastXECHOP43yV0Nsn6fQ4RzYV1kps2tOMlC_Wd0kTGWL4MbflSFJeoeOD
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Test
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: l6zdazkLgirP5BqdFjaAOsQiUGPIdNORnFV3uxoRoEr_uNpoBp_aXc4dUiEjUuKP
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_l6zdazkLgirP5BqdFjaAOsQiUGPIdNORnFV3uxoRoEr_uNpoBp_aXc4dUiEjUuKP.html
+✅ Dokument gespeichert: uploads/contract_l6zdazkLgirP5BqdFjaAOsQiUGPIdNORnFV3uxoRoEr_uNpoBp_aXc4dUiEjUuKP.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/l6zdazkLgirP5BqdFjaAOsQiUGPIdNORnFV3uxoRoEr_uNpoBp_aXc4dUiEjUuKP
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: DFjI7ytastXECHOP43yV0Nsn6fQ4RzYV1kps2tOMlC_Wd0kTGWL4MbflSFJeoeOD
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: l6zdazkLgirP5BqdFjaAOsQiUGPIdNORnFV3uxoRoEr_uNpoBp_aXc4dUiEjUuKP
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole DLV (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: cU7VVhEsKe7SW1Dr6B0EsuzZak-Qr1Df9-Wq4YnlNBCY9Q75JltzS1eq0LGvAB3E
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_cU7VVhEsKe7SW1Dr6B0EsuzZak-Qr1Df9-Wq4YnlNBCY9Q75JltzS1eq0LGvAB3E.html
+✅ Dokument gespeichert: uploads/contract_cU7VVhEsKe7SW1Dr6B0EsuzZak-Qr1Df9-Wq4YnlNBCY9Q75JltzS1eq0LGvAB3E.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole DLV
+----------------------------------------------------------------------
+
+Guten Tag Ole DLV,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/cU7VVhEsKe7SW1Dr6B0EsuzZak-Qr1Df9-Wq4YnlNBCY9Q75JltzS1eq0LGvAB3E
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole DLV (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D.html
+✅ Dokument gespeichert: uploads/contract_V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole DLV
+----------------------------------------------------------------------
+
+Guten Tag Ole DLV,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: cU7VVhEsKe7SW1Dr6B0EsuzZak-Qr1Df9-Wq4YnlNBCY9Q75JltzS1eq0LGvAB3E
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: V_cBgFpyzVSxHi8stXDUzTDg8UkOLyOgJqeRYZfgrki2kRHMXiZq9jaN8hreTL-D
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/test_final_design.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 13:59:24] "[33mGET /sign/TEST-123 HTTP/1.1[0m" 404 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 14:07:18] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 14:07:36] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:07:36] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:07:38] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:07:40] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:08:11] "GET /sign/Okgql7Hjbd7mhFDH9Yp38JH8tqZ5PS75ThZrBddPM6WFoTFOVOLNpV84FvCfIrla HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: sXXqjj74rDaD4r2WCj_JJSmq_AGV12YWEFSDcUZrv5gNfNv3tLrCpWDwa0ffJTLF
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_sXXqjj74rDaD4r2WCj_JJSmq_AGV12YWEFSDcUZrv5gNfNv3tLrCpWDwa0ffJTLF.html
+✅ Dokument gespeichert: uploads/contract_sXXqjj74rDaD4r2WCj_JJSmq_AGV12YWEFSDcUZrv5gNfNv3tLrCpWDwa0ffJTLF.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/sXXqjj74rDaD4r2WCj_JJSmq_AGV12YWEFSDcUZrv5gNfNv3tLrCpWDwa0ffJTLF
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: Okgql7Hjbd7mhFDH9Yp38JH8tqZ5PS75ThZrBddPM6WFoTFOVOLNpV84FvCfIrla
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_Okgql7Hjbd7mhFDH9Yp38JH8tqZ5PS75ThZrBddPM6WFoTFOVOLNpV84FvCfIrla.html
+✅ Dokument gespeichert: uploads/contract_Okgql7Hjbd7mhFDH9Yp38JH8tqZ5PS75ThZrBddPM6WFoTFOVOLNpV84FvCfIrla.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/Okgql7Hjbd7mhFDH9Yp38JH8tqZ5PS75ThZrBddPM6WFoTFOVOLNpV84FvCfIrla
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: Okgql7Hjbd7mhFDH9Yp38JH8tqZ5PS75ThZrBddPM6WFoTFOVOLNpV84FvCfIrla
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: sXXqjj74rDaD4r2WCj_JJSmq_AGV12YWEFSDcUZrv5gNfNv3tLrCpWDwa0ffJTLF
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 14:24:22] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:24:22] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:24:22] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:24:22] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:24:25] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:24:27] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 14:24:47] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:24:48] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:24:48] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:24:50] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:25:09] "GET /sign/fUx3omkca48WH_jFmfDfdiT6OOhQzXql4snE5tgbyxtM-DuBhtyQ_r5zZdr8m0ER HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:590: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 14:25:21] "POST /api/signature HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: DLV Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: M0nlF3ndwQmkWb5mJaMT1zGCh9zPihvFIwfyTM-DrrzeelvgCY2-WChV43PnT3xg
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_M0nlF3ndwQmkWb5mJaMT1zGCh9zPihvFIwfyTM-DrrzeelvgCY2-WChV43PnT3xg.html
+✅ Dokument gespeichert: uploads/contract_M0nlF3ndwQmkWb5mJaMT1zGCh9zPihvFIwfyTM-DrrzeelvgCY2-WChV43PnT3xg.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für DLV Ole
+----------------------------------------------------------------------
+
+Guten Tag DLV Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/M0nlF3ndwQmkWb5mJaMT1zGCh9zPihvFIwfyTM-DrrzeelvgCY2-WChV43PnT3xg
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: DLV Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: fUx3omkca48WH_jFmfDfdiT6OOhQzXql4snE5tgbyxtM-DuBhtyQ_r5zZdr8m0ER
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_fUx3omkca48WH_jFmfDfdiT6OOhQzXql4snE5tgbyxtM-DuBhtyQ_r5zZdr8m0ER.html
+✅ Dokument gespeichert: uploads/contract_fUx3omkca48WH_jFmfDfdiT6OOhQzXql4snE5tgbyxtM-DuBhtyQ_r5zZdr8m0ER.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für DLV Ole
+----------------------------------------------------------------------
+
+Guten Tag DLV Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/fUx3omkca48WH_jFmfDfdiT6OOhQzXql4snE5tgbyxtM-DuBhtyQ_r5zZdr8m0ER
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: M0nlF3ndwQmkWb5mJaMT1zGCh9zPihvFIwfyTM-DrrzeelvgCY2-WChV43PnT3xg
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: fUx3omkca48WH_jFmfDfdiT6OOhQzXql4snE5tgbyxtM-DuBhtyQ_r5zZdr8m0ER
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 14:27:39] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:27:39] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:27:39] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:27:39] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:27:41] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:27:41] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 14:27:56] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:27:58] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:28:27] "GET /sign/XiAjXdhLy6hnndh1ODxv9GBNAUYWPci1fIU4faPUriAcfpUC_q80cvdkslvDQZ3f HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:30:46] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:30:54] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:30:54] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:30:54] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:30:54] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:30:56] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:30:58] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:31:14] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:31:16] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:31:33] "GET /sign/fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:31:42] "GET /sign/fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:31:43] "GET /sign/fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:31:43] "GET /sign/fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:32:45] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:32:45] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:33:07] "[35m[1mPOST /api/templates HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:33:09] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:33:12] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:33:13] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:33:26] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:33:28] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:33:42] "GET /sign/sWPi4JSYa2jv-9SnvnnzWWHqpiwqiHM-bHgfzR0U7AaYqH2C4fUYBIzhgj7-Zk6_ HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:36:55] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:37:08] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:37:11] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:37:41] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:38:38] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:38:38] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:38:38] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [26/Oct/2025 14:38:38] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:38:49] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:39:08] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:39:24] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:39:32] "[31m[1mPOST /api/templates HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:41:17] "[35m[1mPOST /api/templates HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:41:18] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:41:21] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:41:23] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:41:40] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:41:42] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:41:52] "GET /sign/oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:42:07] "[33mGET /apple-touch-icon-precomposed.png HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:42:07] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:42:07] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:42:11] "GET /sign/oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:42:11] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:42:17] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:44:46] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:44:53] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:44:59] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:45:10] "[35m[1mPOST /api/templates HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:45:11] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:45:17] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:45:19] "GET /api/templates HTTP/1.1" 200 -
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: XiAjXdhLy6hnndh1ODxv9GBNAUYWPci1fIU4faPUriAcfpUC_q80cvdkslvDQZ3f
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_XiAjXdhLy6hnndh1ODxv9GBNAUYWPci1fIU4faPUriAcfpUC_q80cvdkslvDQZ3f.html
+✅ Dokument gespeichert: uploads/contract_XiAjXdhLy6hnndh1ODxv9GBNAUYWPci1fIU4faPUriAcfpUC_q80cvdkslvDQZ3f.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/XiAjXdhLy6hnndh1ODxv9GBNAUYWPci1fIU4faPUriAcfpUC_q80cvdkslvDQZ3f
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: XiAjXdhLy6hnndh1ODxv9GBNAUYWPci1fIU4faPUriAcfpUC_q80cvdkslvDQZ3f
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: Dienstleistungsvertrag
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx.html
+✅ Dokument gespeichert: uploads/contract_fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: fx1NFbGJRN7WFAK6Ny8b75FbYpng8jEf1UjEIMosbbJqGF7EqQ-Krf27N88L1_dx
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: sWPi4JSYa2jv-9SnvnnzWWHqpiwqiHM-bHgfzR0U7AaYqH2C4fUYBIzhgj7-Zk6_
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_sWPi4JSYa2jv-9SnvnnzWWHqpiwqiHM-bHgfzR0U7AaYqH2C4fUYBIzhgj7-Zk6_.html
+✅ Dokument gespeichert: uploads/contract_sWPi4JSYa2jv-9SnvnnzWWHqpiwqiHM-bHgfzR0U7AaYqH2C4fUYBIzhgj7-Zk6_.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole
+----------------------------------------------------------------------
+
+Guten Tag Ole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/sWPi4JSYa2jv-9SnvnnzWWHqpiwqiHM-bHgfzR0U7AaYqH2C4fUYBIzhgj7-Zk6_
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: sWPi4JSYa2jv-9SnvnnzWWHqpiwqiHM-bHgfzR0U7AaYqH2C4fUYBIzhgj7-Zk6_
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Testole (pawlowski.ole@icloud.com)
+✅ Template gefunden: dlv2
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet.html
+✅ Dokument gespeichert: uploads/contract_oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Testole
+----------------------------------------------------------------------
+
+Guten Tag Testole,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: oYvh0KHaPKCIieLGmXX3nfsMie0S9Xb4drjfdRiqxhtb46zWgoLPhhtW7QDa7Bet
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole3 (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV3
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N.html
+✅ Dokument gespeichert: uploads/contract_zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole3
+----------------------------------------------------------------------
+
+Guten Tag Ole3,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+127.0.0.1 - - [26/Oct/2025 14:45:34] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:45:36] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:45:45] "GET /sign/zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:46:03] "[33mGET /apple-touch-icon-precomposed.png HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:46:03] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:46:03] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [26/Oct/2025 14:46:06] "GET /sign/zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:46:06] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: zPS71jHFU2YhprlwXrZrCUtwqw8iN1-KjDShrBvGjS_2atyxW_V77uhm34V3bd0N
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 14:49:57] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:50:19] "[35m[1mPOST /api/templates HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:50:21] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:50:23] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:50:26] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 14:50:40] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:50:42] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:50:50] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:590: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 14:51:00] "POST /api/signature HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:643: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:51:07] "GET /api/download/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: OLEK (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV4
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s.html
+✅ Dokument gespeichert: uploads/contract_tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für OLEK
+----------------------------------------------------------------------
+
+Guten Tag OLEK,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:52:25] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:52:38] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:597: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 14:52:41] "POST /api/signature HTTP/1.1" 200 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:53:55] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:53:56] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:617: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 14:54:00] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:04] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:06] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:06] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:06] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:08] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:54:13] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:17] "GET /sign/tOCKMEeObbqzqXSaT-5Xu6nybl8gcQumynXpWEVoeaD8r7kbkSBxnReyq5Jk0R1s HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:54:22] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:54:22] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+127.0.0.1 - - [26/Oct/2025 14:56:25] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:56:27] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:56:32] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 14:56:49] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:56:51] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:57:01] "GET /sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:625: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 14:57:07] "POST /api/signature HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:682: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:57:09] "GET /api/download/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:57:18] "GET /sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:57:21] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:57:22] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:57:22] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:57:22] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:57:22] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole$ (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV4
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS.html
+✅ Dokument gespeichert: uploads/contract_h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole$
+----------------------------------------------------------------------
+
+Guten Tag Ole$,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 14:58:44] "GET /sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:639: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 14:58:47] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:58:48] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:58:48] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:58:48] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:58:50] "GET /sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:58:54] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 14:59:08] "GET /sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:59:10] "GET /sign/h3scKHeQMTLGnfcENMdDT49SUwZGaQY2FqJ0wv-nhdl_OztugJHn-ry95OdIdovS HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:59:17] "GET /api/templates HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:166: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  template = ContractTemplate.query.get(data['template_id'])
+127.0.0.1 - - [26/Oct/2025 14:59:35] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:59:37] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 14:59:46] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:59:48] "[35m[1mPOST /api/contracts HTTP/1.1[0m" 201 -
+127.0.0.1 - - [26/Oct/2025 14:59:55] "GET /sign/PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 15:00:00] "POST /api/signature HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 15:00:02] "GET /sign/PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 15:00:06] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+127.0.0.1 - - [26/Oct/2025 15:00:06] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole5 (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV4
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH.html
+✅ Dokument gespeichert: uploads/contract_PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole5
+----------------------------------------------------------------------
+
+Guten Tag Ole5,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole5 (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV4
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: FOEE1CDW3hdBuNyF-jQWHRHNjWfcmunMYXif4N2Tc99rFv-zqG-Os6lzV2CVIGTR
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_FOEE1CDW3hdBuNyF-jQWHRHNjWfcmunMYXif4N2Tc99rFv-zqG-Os6lzV2CVIGTR.html
+✅ Dokument gespeichert: uploads/contract_FOEE1CDW3hdBuNyF-jQWHRHNjWfcmunMYXif4N2Tc99rFv-zqG-Os6lzV2CVIGTR.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole5
+----------------------------------------------------------------------
+
+Guten Tag Ole5,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/FOEE1CDW3hdBuNyF-jQWHRHNjWfcmunMYXif4N2Tc99rFv-zqG-Os6lzV2CVIGTR
+
+======================================================================
+
+
+======================================================================
+🔄 Neuer Vertrag wird erstellt...
+======================================================================
+📝 Daten: Ole5 (pawlowski.ole@icloud.com)
+✅ Template gefunden: DLV4
+✅ Variablen geparst: 3 Variablen
+✅ HTML gerendert
+✅ Contract ID: ETnxsXkLQ3ghrIxynvzRrJ75BqHAdBpIK8JueM1fnja-KrnQZskueyb1Ar8mChO4
+⚠️  PDF-Generierung deaktiviert. HTML gespeichert: uploads/contract_ETnxsXkLQ3ghrIxynvzRrJ75BqHAdBpIK8JueM1fnja-KrnQZskueyb1Ar8mChO4.html
+✅ Dokument gespeichert: uploads/contract_ETnxsXkLQ3ghrIxynvzRrJ75BqHAdBpIK8JueM1fnja-KrnQZskueyb1Ar8mChO4.pdf
+✅ Contract in DB gespeichert
+📧 Versende E-Mail...
+
+======================================================================
+📧 MOCK-EMAIL
+======================================================================
+Von: noreply@signaturapp.local
+An: pawlowski.ole@icloud.com
+Betreff: Vertrag zur Unterschrift für Ole5
+----------------------------------------------------------------------
+
+Guten Tag Ole5,
+
+anbei erhalten Sie Ihren Vertrag zur elektronischen Unterschrift.
+
+👉 Bitte klicken Sie auf folgenden Link:
+   http://localhost:5002/sign/ETnxsXkLQ3ghrIxynvzRrJ75BqHAdBpIK8JueM1fnja-KrnQZskueyb1Ar8mChO4
+
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: FOEE1CDW3hdBuNyF-jQWHRHNjWfcmunMYXif4N2Tc99rFv-zqG-Os6lzV2CVIGTR
+======================================================================
+
+✅ E-Mail erfolgreich versendet!
+======================================================================
+✅ Vertrag erfolgreich erstellt und versendet!
+   Contract ID: ETnxsXkLQ3ghrIxynvzRrJ75BqHAdBpIK8JueM1fnja-KrnQZskueyb1Ar8mChO4
+======================================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+ * Detected change in '/Users/olepawlowski/Documents/SignaturApp/app.py', reloading
+
+==================================================
+✨ SignaturApp gestartet!
+🌐 Öffnen Sie: http://localhost:5002
+==================================================
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 841-784-785
+/Users/olepawlowski/Documents/SignaturApp/app.py:650: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(data['contract_id'])
+127.0.0.1 - - [26/Oct/2025 15:00:55] "[31m[1mPOST /api/signature HTTP/1.1[0m" 400 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:378: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 15:00:57] "GET /sign/PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 15:01:20] "GET /api/contracts HTTP/1.1" 200 -
+127.0.0.1 - - [26/Oct/2025 15:01:22] "GET /api/contracts HTTP/1.1" 200 -
+/Users/olepawlowski/Documents/SignaturApp/app.py:707: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  contract = Contract.query.get(contract_id)
+127.0.0.1 - - [26/Oct/2025 15:01:53] "GET /api/download/PSKCLu4dfCwFCiuoCgc2L0AgZkVkHzOqmIHqhW6Knvh2WkM_3lqItLivkcvxv1TH HTTP/1.1" 200 -
