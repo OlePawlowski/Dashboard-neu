@@ -274,34 +274,38 @@
   <script>
     const teamGrid = document.getElementById('teamGrid');
 
-    function renderTeam(items) {
-      if (!items.length) {
-        teamGrid.innerHTML = '<p>Kein Team vorhanden.</p>';
-        return;
-      }
-      teamGrid.innerHTML = items.map(u => `
-        <div class="team-card glass">
-          <img src="${u.avatar}" alt="${u.name || u.username}" />
-          <div class="team-card-body">
-            <div class="team-card-name">${u.name || u.username}</div>
-            <div class="team-card-role">${u.role || ''}</div>
-            <div class="team-card-email">${u.email}</div>
+    if (teamGrid) {
+      function renderTeam(items) {
+        if (!items.length) {
+          teamGrid.innerHTML = '<p>Kein Team vorhanden.</p>';
+          return;
+        }
+        teamGrid.innerHTML = items.map(u => `
+          <div class="team-card glass">
+            <img src="${u.avatar}" alt="${u.name || u.username}" />
+            <div class="team-card-body">
+              <div class="team-card-name">${u.name || u.username}</div>
+              <div class="team-card-role">${u.role || ''}</div>
+              <div class="team-card-email">${u.email}</div>
+            </div>
           </div>
-        </div>
-      `).join('');
-    }
-
-    async function loadTeam() {
-      try {
-        const res = await fetch('/api/users');
-        const items = await res.json();
-        renderTeam(items);
-      } catch (e) {
-        teamGrid.innerHTML = '<p>Fehler beim Laden des Teams.</p>';
+        `).join('');
       }
-    }
 
-    loadTeam();
+      async function loadTeam() {
+        try {
+          const res = await fetch('/api/users');
+          const items = await res.json();
+          renderTeam(items);
+        } catch (e) {
+          teamGrid.innerHTML = '<p>Fehler beim Laden des Teams.</p>';
+        }
+      }
+
+      loadTeam();
+    } else {
+      console.warn('teamGrid Element nicht gefunden – Team-Sektion wird übersprungen.');
+    }
   </script>
 
   <!-- Teamchat Logik (SSE, CRUD, Upload, Reaktionen) -->
@@ -732,23 +736,241 @@
       });
     }
 
+    let currentEmailCredId = null;
+    let currentEmailType = 'exchange';
+    
     function renderPreview(m){
+      // Speichere aktuelle Cred-ID und Type für Antwort
+      const activeAccount = mailAccountsEl.querySelector('.mail-account.active');
+      if (activeAccount) {
+        currentEmailCredId = activeAccount.getAttribute('data-cred-id');
+        currentEmailType = activeAccount.getAttribute('data-type') || 'exchange';
+      }
+      
+      // Zeige nur Snippet (Performance-optimiert)
       mailPreviewEl.innerHTML = `
         <div class=\"preview-header\">
           <div class=\"preview-from\">${m.from}</div>
           <div class=\"preview-time\">${m.time}</div>
         </div>
         <div class=\"preview-subject\">${m.subject}</div>
-        <div class=\"preview-body muted\">Vorschau: ${(m.snippet||'').replace(/</g,'&lt;')}</div>
-        <div class=\"preview-actions\">
-          <a class=\"btn-small\" href=\"https://mail.google.com/mail/u/0/#inbox\" target=\"_blank\" rel=\"noopener\">In Gmail öffnen</a>
+        <div class=\"preview-body muted\">${(m.snippet||'').replace(/</g,'&lt;')}</div>
+        <div class=\"preview-actions\" style=\"display: flex; gap: 0.5rem; margin-top: 1rem;\">
+          <button class=\"btn-small\" id=\"reply-email-btn\" data-email-id=\"${m.id}\" data-from=\"${m.from}\" data-subject=\"${m.subject}\" style=\"background-color: #f58060; color: white;\">
+            <i class=\"fas fa-reply\"></i> Antworten
+          </button>
         </div>
       `;
+      
+      // Antwort-Button Event Listener
+      const replyBtn = document.getElementById('reply-email-btn');
+      if (replyBtn) {
+        replyBtn.addEventListener('click', () => {
+          showReplyModal(m, currentEmailCredId, currentEmailType);
+        });
+      }
+    }
+    
+    async function showSignatureModal(credId) {
+      // Lade aktuelle Signatur
+      let currentSignature = '';
+      try {
+        const res = await fetch(`/api/exchange/accounts/${credId}/signature`);
+        if (res.ok) {
+          const data = await res.json();
+          currentSignature = data.signature || '';
+        }
+      } catch (err) {
+        console.error('Fehler beim Laden der Signatur:', err);
+      }
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 600px;">
+          <div class="modal-header">
+            <h3>E-Mail-Signatur bearbeiten</h3>
+            <button class="btn-small" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          <div class="modal-body" style="padding: 1.5rem;">
+            <p style="margin-bottom: 1rem; opacity: 0.8;">Die Signatur wird automatisch an alle ausgehenden E-Mails angehängt.</p>
+            <form id="signature-form" style="display: flex; flex-direction: column; gap: 1rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Signatur *</label>
+                <div id="signature-editor" contenteditable="true" style="width: 100%; min-height: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: inherit; overflow-y: auto;" placeholder="Ihre E-Mail-Signatur...">${currentSignature}</div>
+              </div>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                <button type="submit" class="btn-small" style="flex: 1; background-color: #f58060; color: white;">Speichern</button>
+                <button type="button" class="btn-small" onclick="this.closest('.modal-overlay').remove()" style="flex: 1;">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      // Editor initialisieren
+      const editor = document.getElementById('signature-editor');
+      
+      // Stelle sicher, dass der Editor editierbar ist
+      editor.setAttribute('contenteditable', 'true');
+      editor.setAttribute('spellcheck', 'false');
+      
+      // Erlaube Paste - lasse Browser das Standard-Verhalten machen, aber behalte HTML
+      editor.addEventListener('paste', (e) => {
+        e.stopPropagation(); // Verhindere nicht das Standard-Verhalten
+        // Browser macht das Einfügen automatisch, wir müssen nichts tun
+      });
+      
+      // Fokussiere den Editor beim Öffnen des Modals
+      setTimeout(() => {
+        editor.focus();
+      }, 100);
+      
+      document.getElementById('signature-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const signature = editor.innerHTML.trim();
+        const signatureText = editor.textContent.trim();
+        
+        if (!signatureText) {
+          alert('Bitte geben Sie eine Signatur ein.');
+          return;
+        }
+        
+        try {
+          const submitBtn = document.querySelector('#signature-form button[type="submit"]');
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Speichere...';
+          
+          const res = await fetch(`/api/exchange/accounts/${credId}/signature`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ signature })
+          });
+          
+          const data = await res.json();
+          if (res.ok) {
+            alert('✅ Signatur erfolgreich gespeichert!');
+            modal.remove();
+          } else {
+            alert('❌ Fehler: ' + (data.error || 'Unbekannter Fehler'));
+          }
+        } catch (err) {
+          alert('❌ Fehler beim Speichern: ' + err.message);
+        } finally {
+          const submitBtn = document.querySelector('#signature-form button[type="submit"]');
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Speichern';
+          }
+        }
+      });
+      
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+    }
+    
+    function showReplyModal(email, credId, type) {
+      // E-Mail-Adresse aus From extrahieren
+      const fromMatch = email.from.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+      const toEmail = fromMatch ? fromMatch[0] : email.from;
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 600px;">
+          <div class="modal-header">
+            <h3>E-Mail antworten</h3>
+            <button class="btn-small" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          <div class="modal-body" style="padding: 1.5rem;">
+            <form id="reply-email-form" style="display: flex; flex-direction: column; gap: 1rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">An *</label>
+                <input type="email" id="reply-to" value="${toEmail}" readonly style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f5f5f5;">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Betreff *</label>
+                <input type="text" id="reply-subject" value="Re: ${email.subject}" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Nachricht *</label>
+                <textarea id="reply-body" required style="width: 100%; min-height: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;" placeholder="Ihre Antwort..."></textarea>
+              </div>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                <button type="submit" class="btn-small" style="flex: 1; background-color: #f58060; color: white;">Senden</button>
+                <button type="button" class="btn-small" onclick="this.closest('.modal-overlay').remove()" style="flex: 1;">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      document.getElementById('reply-email-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const to = document.getElementById('reply-to').value;
+        const subject = document.getElementById('reply-subject').value;
+        const body = document.getElementById('reply-body').value;
+        
+        if (!to || !subject || !body) {
+          alert('Bitte füllen Sie alle Felder aus.');
+          return;
+        }
+        
+        try {
+          const replyBtn = document.querySelector('#reply-email-form button[type="submit"]');
+          replyBtn.disabled = true;
+          replyBtn.textContent = 'Sende...';
+          
+          const res = await fetch('/api/emails/reply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cred_id: credId,
+              type: type,
+              email_id: email.id,
+              to: to,
+              subject: subject,
+              body: body
+            })
+          });
+          
+          const data = await res.json();
+          if (res.ok) {
+            alert('✅ Antwort erfolgreich gesendet!');
+            modal.remove();
+          } else {
+            alert('❌ Fehler: ' + (data.error || 'Unbekannter Fehler'));
+          }
+        } catch (err) {
+          alert('❌ Fehler beim Senden: ' + err.message);
+        } finally {
+          const replyBtn = document.querySelector('#reply-email-form button[type="submit"]');
+          if (replyBtn) {
+            replyBtn.disabled = false;
+            replyBtn.textContent = 'Senden';
+          }
+        }
+      });
+      
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
     }
 
-    async function updateBadgeByCred(credId){
+    async function updateBadgeByCred(credId, type = 'exchange'){
       try{
-        const res = await fetch(`/api/emails/unread_count?cred_id=${credId}`);
+        const res = await fetch(`/api/emails/unread_count?cred_id=${credId}&type=${type}`);
         const data = await res.json();
         const el = document.querySelector(`.mail-account[data-cred-id='${credId}'] .mail-account-badge`);
         if (el) el.textContent = (data && typeof data.count==='number') ? data.count : 0;
@@ -758,27 +980,40 @@
       }
     }
 
-    async function loadByCredId(credId){
+    async function loadByCredId(credId, type = 'exchange'){
       try{
-        const res = await fetch(`/api/emails?cred_id=${credId}`);
+        const res = await fetch(`/api/emails?cred_id=${credId}&type=${type}`);
         const items = await res.json();
         window.__currentMails = Array.isArray(items) ? items : [];
         renderMailList(window.__currentMails);
-        if (window.__currentMails[0]) renderPreview(window.__currentMails[0]);
+        // E-Mail-Liste bleibt sichtbar, keine automatische Vorschau
+        if (window.__currentMails && window.__currentMails.length > 0) {
+          // Zeige nur leere Vorschau, Liste bleibt sichtbar
+          mailPreviewEl.innerHTML = '<div class="mail-preview-empty">Wähle eine E-Mail aus der Liste aus</div>';
+        } else {
+          mailPreviewEl.innerHTML = '<div class="mail-preview-empty">Keine E‑Mail ausgewählt</div>';
+        }
       }catch(_e){
         renderMailList([]);
+        mailPreviewEl.innerHTML = '<div class="mail-preview-empty">Fehler beim Laden</div>';
       }
-      updateBadgeByCred(credId);
+      updateBadgeByCred(credId, type);
     }
 
     async function renderAccounts(){
       try{
-        const res = await fetch('/api/gmail/accounts');
+        const res = await fetch('/api/mail/accounts');
         const accs = await res.json();
-        if (!Array.isArray(accs)) { mailAccountsEl.innerHTML = '<li class="muted">Keine Postfächer verbunden</li>'; return; }
+        if (!Array.isArray(accs) || accs.length === 0) { 
+          mailAccountsEl.innerHTML = '<li class="muted">Keine Postfächer verbunden</li>'; 
+          return; 
+        }
         mailAccountsEl.innerHTML = accs.map((a, i)=>`
-          <li class="mail-account${i===0?' active':''}" data-cred-id="${a.cred_id}" draggable="true">
-            <span class="mail-account-name">${a.email || 'Konto'}</span>
+          <li class="mail-account${i===0?' active':''}" data-cred-id="${a.cred_id}" data-type="${a.type || 'exchange'}" draggable="true">
+            <span class="mail-account-name">
+              <i class="fab fa-microsoft" style="margin-right: 4px;"></i>
+              ${a.email || 'Konto'}
+            </span>
             <span class="mail-account-badge">${a.unread || 0}</span>
           </li>
         `).join('');
@@ -788,29 +1023,99 @@
             mailAccountsEl.querySelectorAll('.mail-account').forEach(x=>x.classList.remove('active'));
             li.classList.add('active');
             const credId = li.getAttribute('data-cred-id');
-            loadByCredId(credId);
+            const type = li.getAttribute('data-type') || 'exchange';
+            loadByCredId(credId, type);
           });
           
-          // Rechtsklick für Löschen
+          // Rechtsklick-Kontextmenü
           li.addEventListener('contextmenu', async (e) => {
             e.preventDefault();
-            const credId = li.getAttribute('data-cred-id');
-            const email = li.querySelector('.mail-account-name').textContent;
+            e.stopPropagation();
             
-            if (confirm(`Möchten Sie das Gmail-Konto "${email}" wirklich trennen?`)) {
-              try {
-                const res = await fetch(`/api/gmail/accounts/${credId}`, { method: 'DELETE' });
-                if (res.ok) {
-                  alert('✅ Gmail-Konto erfolgreich getrennt');
-                  renderAccounts(); // Liste neu laden
-                } else {
-                  const error = await res.json();
-                  alert('❌ Fehler beim Trennen: ' + error.error);
-                }
-              } catch (err) {
-                alert('❌ Fehler beim Trennen: ' + err.message);
-              }
+            const credId = li.getAttribute('data-cred-id');
+            const type = li.getAttribute('data-type') || 'exchange';
+            const email = li.querySelector('.mail-account-name').textContent.trim();
+            
+            // Entferne vorhandenes Kontextmenü
+            const existingMenu = document.querySelector('.mail-account-context-menu');
+            if (existingMenu) {
+              existingMenu.remove();
             }
+            
+            // Erstelle Kontextmenü
+            const menu = document.createElement('div');
+            menu.className = 'mail-account-context-menu';
+            menu.style.cssText = `
+              position: fixed;
+              left: ${e.pageX}px;
+              top: ${e.pageY}px;
+              background: white;
+              border: 1px solid #ddd;
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              z-index: 10000;
+              min-width: 200px;
+              padding: 0.5rem 0;
+            `;
+            
+            // Option 1: Signatur hinzufügen/bearbeiten
+            const signatureOption = document.createElement('div');
+            signatureOption.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+            signatureOption.innerHTML = '<i class="fas fa-signature" style="margin-right: 0.5rem;"></i> Signatur hinzufügen';
+            signatureOption.addEventListener('click', () => {
+              menu.remove();
+              showSignatureModal(credId);
+            });
+            signatureOption.addEventListener('mouseenter', () => {
+              signatureOption.style.background = '#f5f5f5';
+            });
+            signatureOption.addEventListener('mouseleave', () => {
+              signatureOption.style.background = 'white';
+            });
+            
+            // Option 2: Postfach löschen
+            const deleteOption = document.createElement('div');
+            deleteOption.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s; color: #d32f2f;';
+            deleteOption.innerHTML = '<i class="fas fa-trash" style="margin-right: 0.5rem;"></i> Postfach löschen';
+            deleteOption.addEventListener('click', async () => {
+              menu.remove();
+              if (confirm(`Möchten Sie das Exchange-Konto "${email}" wirklich trennen?`)) {
+                try {
+                  const endpoint = `/api/exchange/accounts/${credId}`;
+                  const res = await fetch(endpoint, { method: 'DELETE' });
+                  if (res.ok) {
+                    alert(`✅ Exchange-Konto erfolgreich getrennt`);
+                    renderAccounts(); // Liste neu laden
+                  } else {
+                    const error = await res.json();
+                    alert('❌ Fehler beim Trennen: ' + error.error);
+                  }
+                } catch (err) {
+                  alert('❌ Fehler beim Trennen: ' + err.message);
+                }
+              }
+            });
+            deleteOption.addEventListener('mouseenter', () => {
+              deleteOption.style.background = '#ffebee';
+            });
+            deleteOption.addEventListener('mouseleave', () => {
+              deleteOption.style.background = 'white';
+            });
+            
+            menu.appendChild(signatureOption);
+            menu.appendChild(deleteOption);
+            document.body.appendChild(menu);
+            
+            // Schließe Menü bei Klick außerhalb
+            const closeMenu = (e) => {
+              if (!menu.contains(e.target) && e.target !== li) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+              }
+            };
+            setTimeout(() => {
+              document.addEventListener('click', closeMenu);
+            }, 100);
           });
           // Drag & Drop Reordering (nur UI, persist optional später)
           li.addEventListener('dragstart', (e)=>{
@@ -832,18 +1137,134 @@
         });
         // Load first by default
         const first = mailAccountsEl.querySelector('.mail-account');
-        if (first){ loadByCredId(first.getAttribute('data-cred-id')); }
+        if (first){ 
+          const credId = first.getAttribute('data-cred-id');
+          const type = first.getAttribute('data-type') || 'exchange';
+          loadByCredId(credId, type);
+        }
         // keep badges updated
-        setTimeout(()=>{ accs.forEach(a=> updateBadgeByCred(a.cred_id)); }, 0);
+        setTimeout(()=>{ accs.forEach(a=> updateBadgeByCred(a.cred_id, a.type)); }, 0);
       }catch(_e){
         mailAccountsEl.innerHTML = '<li class="muted">Fehler beim Laden</li>';
       }
     }
 
     btnAddMailbox?.addEventListener('click', ()=>{
-      // starte OAuth-Flow (keine Slots mehr nötig)
-      window.location.href = '/gmail/connect';
+      // Zeige Modal zur Auswahl des Postfach-Typs
+      showMailboxTypeModal();
     });
+    
+    function showMailboxTypeModal() {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 400px;">
+          <div class="modal-header">
+            <h3>Postfach hinzufügen</h3>
+            <button class="btn-small" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          <div class="modal-body" style="padding: 1.5rem;">
+            <p style="margin-bottom: 1rem;">Exchange-Konto verbinden:</p>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+              <button class="btn-small" style="width: 100%; padding: 1rem; text-align: left; display: flex; align-items: center; gap: 0.5rem;" onclick="showExchangeIMAPForm(this.closest('.modal-overlay'))">
+                <i class="fab fa-microsoft" style="font-size: 1.5rem;"></i>
+                <div>
+                  <strong>Exchange / Outlook (IONOS)</strong>
+                  <div style="font-size: 0.85rem; opacity: 0.8;">Exchange-Konto über IMAP verbinden</div>
+                </div>
+              </button>
+            </div>
+            <button class="btn-small" style="width: 100%; margin-top: 1rem;" onclick="this.closest('.modal-overlay').remove()">Abbrechen</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+    }
+    
+    function showExchangeIMAPForm(modal) {
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3>Exchange-Konto verbinden (IONOS)</h3>
+            <button class="btn-small" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          <div class="modal-body" style="padding: 1.5rem;">
+            <form id="exchange-imap-form" style="display: flex; flex-direction: column; gap: 1rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">E-Mail-Adresse *</label>
+                <input type="email" id="exchange-email" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" placeholder="ihre.email@helpcare.de">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Passwort *</label>
+                <input type="password" id="exchange-password" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" placeholder="Ihr Exchange-Passwort oder App-Passwort">
+                <small style="opacity: 0.7; display: block; margin-top: 0.25rem;">Bei 2FA benötigen Sie ein App-Passwort aus IONOS</small>
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">IMAP-Server</label>
+                <input type="text" id="exchange-imap-server" value="exchange.ionos.eu" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="opacity: 0.7;">IONOS Exchange IMAP-Server: exchange.ionos.eu</small>
+              </div>
+              <div style="display: flex; gap: 1rem;">
+                <div style="flex: 1;">
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Port</label>
+                  <input type="number" id="exchange-imap-port" value="993" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div style="flex: 1; display: flex; align-items: flex-end;">
+                  <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" id="exchange-imap-ssl" checked style="width: auto;">
+                    <span>SSL verwenden</span>
+                  </label>
+                </div>
+              </div>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                <button type="submit" class="btn-small" style="flex: 1;">Verbinden</button>
+                <button type="button" class="btn-small" onclick="showMailboxTypeModal()" style="flex: 1;">Zurück</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      
+      document.getElementById('exchange-imap-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('exchange-email').value;
+        const password = document.getElementById('exchange-password').value;
+        const imapServer = document.getElementById('exchange-imap-server').value;
+        const imapPort = parseInt(document.getElementById('exchange-imap-port').value);
+        const imapSsl = document.getElementById('exchange-imap-ssl').checked;
+        
+        try {
+          const res = await fetch('/api/exchange/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: email,
+              password: password,
+              imap_server: imapServer,
+              imap_port: imapPort,
+              imap_use_ssl: imapSsl
+            })
+          });
+          
+          const data = await res.json();
+          if (res.ok) {
+            alert('✅ Exchange-Konto erfolgreich verbunden!');
+            modal.remove();
+            renderAccounts();
+          } else {
+            alert('❌ Fehler: ' + (data.error || 'Unbekannter Fehler'));
+          }
+        } catch (err) {
+          alert('❌ Fehler beim Verbinden: ' + err.message);
+        }
+      });
+    }
 
     renderAccounts();
     setInterval(renderAccounts, 30000);
@@ -970,9 +1391,12 @@
       </div>
       <div class="modal-body">
         <div class="customers-header">
-          <div class="customers-controls">
-            <input type="text" id="partner-search" placeholder="Nach Name oder E-Mail suchen..." />
+          <div class="customers-controls" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="partner-search" placeholder="Nach Name oder E-Mail suchen..." style="flex: 1; min-width: 200px;" />
             <button id="add-partner-btn" class="btn-small">Neuer Partner</button>
+            <button id="send-reminder-global-btn" class="btn-small" style="background-color: #f58060; color: white; font-weight: bold; display: inline-flex; align-items: center; gap: 5px;">
+              <i class="fas fa-envelope"></i> Erinnerungsmail senden
+            </button>
           </div>
         </div>
         <div class="customers-content">
@@ -1052,6 +1476,11 @@
           <div class="form-group">
             <label for="new-partner-director">Vertr. durch den Geschäftsführer</label>
             <input type="text" id="new-partner-director">
+          </div>
+          
+          <div class="form-group">
+            <label for="new-partner-notes">Notizen</label>
+            <textarea id="new-partner-notes" rows="4" style="width: 100%; resize: vertical;"></textarea>
           </div>
           
           <div class="form-actions">
@@ -1153,6 +1582,11 @@
             <input type="text" id="edit-partner-provision" placeholder="z. B. 20">
           </div>
           
+          <div class="form-group">
+            <label for="edit-partner-notes">Notizen</label>
+            <textarea id="edit-partner-notes" rows="4" style="width: 100%; resize: vertical;"></textarea>
+          </div>
+          
           <div class="form-actions">
             <button type="button" id="cancel-edit-partner" class="btn-small">Abbrechen</button>
             <button type="submit" class="btn-small">Speichern</button>
@@ -1181,11 +1615,19 @@
         <button type="button" id="befragungsbogen-download" class="btn-small">Als PDF herunterladen</button>
       </div>
       <iframe id="befragungsbogen-frame" src="/befragungsbogen/2-personen" title="Befragungsbogen" style="width:100%;height:70vh;border:0;border-radius:12px;background:white;"></iframe>
-      <form id="befragungsbogen-send-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-        <input type="text" name="filename" placeholder="Dateiname (optional)" />
-        <input type="text" name="subject" placeholder="E-Mail Betreff" style="min-width:200px;" />
-        <textarea name="body" placeholder="E-Mail Beschreibung" style="min-width:300px;min-height:60px;resize:vertical;"></textarea>
-        <button type="submit" class="btn-small">An Kooperationspartner senden</button>
+      <form id="befragungsbogen-send-form" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" name="filename" placeholder="Dateiname (optional)" />
+          <input type="text" name="subject" placeholder="E-Mail Betreff" style="min-width:200px;" />
+          <textarea name="body" placeholder="E-Mail Beschreibung" style="min-width:300px;min-height:60px;resize:vertical;"></textarea>
+        </div>
+        <div id="befragungsbogen-partner-selection" style="margin-bottom: 0.5rem;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Kooperationspartner auswählen:</label>
+          <div id="befragungsbogen-partner-container" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: white;">
+            <p>Lade Kooperationspartner...</p>
+          </div>
+        </div>
+        <button type="submit" class="btn-small" style="align-self:flex-start;">An Kooperationspartner senden</button>
       </form>
     </div>
   </div>
@@ -1203,10 +1645,45 @@
     const openBF = document.getElementById('nav-befragungsbogen');
     const modalBF = document.getElementById('befragungsbogen-modal');
     const closeBF = document.getElementById('close-befragungsbogen');
+    
+    // Kunden für Befragungsbogen-Dropdown laden
+    async function loadBefragungsbogenCustomers() {
+      try {
+        const customerSelect = document.getElementById('customer-select');
+        if (!customerSelect) return;
+        
+        const res = await fetch('/api/customers');
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        const data = await res.json();
+        const customers = Array.isArray(data) ? data : (data.items || []);
+        
+        customerSelect.innerHTML = '<option value="">Neuen Kunden erstellen</option>';
+        customers.forEach(customer => {
+          const option = document.createElement('option');
+          option.value = customer.id;
+          option.textContent = `${customer.name} (${customer.email || 'Keine E-Mail'})`;
+          customerSelect.appendChild(option);
+        });
+      } catch (e) {
+        console.error('Fehler beim Laden der Kunden für Befragungsbogen:', e);
+        const customerSelect = document.getElementById('customer-select');
+        if (customerSelect) {
+          customerSelect.innerHTML = '<option value="">Fehler beim Laden</option>';
+        }
+      }
+    }
+    
     openBF?.addEventListener('click', ()=> {
       modalBF.style.display = 'block';
-      loadCustomers(); // Kunden für Dropdown laden
+      loadBefragungsbogenCustomers(); // Kunden für Dropdown laden
       updateBefragungsbogenFrame(); // Iframe mit aktueller Kunden-ID aktualisieren
+      // Partner mit kleinem Delay laden, damit das Modal gerendert ist
+      setTimeout(() => {
+        loadPartnersForBefragungsbogen(); // Partner für Auswahl laden
+      }, 100);
     });
     openBF?.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); modalBF.style.display='block'; }});
     closeBF?.addEventListener('click', ()=> modalBF.style.display = 'none');
@@ -1447,6 +1924,26 @@
         const finalSubject = customSubject || 'Befragungsbogen';
         const finalBody = customBody || 'Hallo,\n\nanbei befindet sich der Befragungsbogen.\n\nMit besten Grüßen';
         
+        // Ausgewählte Partner sammeln
+        const selectedPartners = [];
+        const checkboxes = document.querySelectorAll('#befragungsbogen-partner-selection input[type="checkbox"]:checked');
+        
+        if (checkboxes.length === 0) {
+          alert('Bitte wählen Sie mindestens einen Kooperationspartner aus.');
+          return;
+        }
+        
+        checkboxes.forEach(checkbox => {
+          selectedPartners.push({
+            email: checkbox.value,
+            name: checkbox.dataset.name
+          });
+        });
+        
+        if (!confirm(`Möchten Sie den Befragungsbogen an ${selectedPartners.length} Kooperationspartner senden?`)) {
+          return;
+        }
+        
         const res = await fetch('/api/send-offer', { 
           method:'POST', 
           headers:{'Content-Type':'application/json'}, 
@@ -1457,19 +1954,60 @@
             subject: finalSubject,
             body: finalBody,
             form_fields: formFields,  // Alle ausgefüllten Formularfelder (inkl. Kunden-ID)
-            pdf_data: dataUrl  // Die generierte PDF-Datei
+            pdf_data: dataUrl,  // Die generierte PDF-Datei
+            partners: selectedPartners  // Ausgewählte Kooperationspartner
           }) 
         });
         const data = await res.json();
         if(!res.ok) throw new Error(data.error||'Versand fehlgeschlagen');
-        alert('✔️ Befragungsbogen an alle Kooperationspartner gesendet');
+        alert(`✔️ Befragungsbogen an ${selectedPartners.length} Kooperationspartner gesendet`);
       }catch(err){ alert('❌ '+(err?.message || err)); }
     });
+
+    // Partner für Befragungsbogen-Versand laden
+    async function loadPartnersForBefragungsbogen() {
+      const container = document.getElementById('befragungsbogen-partner-container');
+      if (!container) {
+        console.error('befragungsbogen-partner-container nicht gefunden');
+        return;
+      }
+      
+      try {
+        container.innerHTML = '<p>Lade Kooperationspartner...</p>';
+        const res = await fetch('/api/kooperationspartner');
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const data = await res.json();
+        const partners = data.items || data || [];
+        
+        if (partners.length === 0) {
+          container.innerHTML = '<p>Keine Kooperationspartner gefunden.</p>';
+          return;
+        }
+        
+        container.innerHTML = `
+          ${partners.map(partner => `
+            <label style="display: block; padding: 4px; cursor: pointer;">
+              <input type="checkbox" value="${partner.email || ''}" data-name="${partner.name || ''}" checked style="margin-right: 8px;">
+              ${partner.name || 'Unbekannt'} (${partner.email || 'keine E-Mail'})
+            </label>
+          `).join('')}
+        `;
+      } catch (e) {
+        console.error('Fehler beim Laden der Kooperationspartner:', e);
+        container.innerHTML = `<p style="color: red;">Fehler beim Laden der Kooperationspartner: ${e.message}</p>`;
+      }
+    }
 
   </script>
 
   <!-- Navigation und Kundenverwaltung -->
   <script>
+    // Globaler Referenzpunkt für das aktuell ausgewählte Partnerprofil
+    let currentPartner = null;
+    window.currentPartner = null;
+
     // Status-Label Funktionen (global definiert für sofortige Verfügbarkeit)
     window.getStatusText = function(status) {
       const statusMap = {
@@ -1602,7 +2140,9 @@
       async function loadPartners() {
         try {
           const res = await fetch('/api/kooperationspartner');
-          const partners = await res.json();
+          const data = await res.json();
+          // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+          const partners = Array.isArray(data) ? data : (data.items || []);
           console.log('Kooperationspartner geladen:', partners);
           renderPartners(partners);
         } catch (e) {
@@ -1617,7 +2157,9 @@
       async function loadPartnersForEmail() {
         try {
           const res = await fetch('/api/kooperationspartner');
-          const partners = await res.json();
+          const data = await res.json();
+          // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+          const partners = Array.isArray(data) ? data : (data.items || []);
           console.log('Kooperationspartner für E-Mail geladen:', partners);
           renderPartnersForEmail(partners);
         } catch (e) {
@@ -1680,7 +2222,7 @@
               <div class="customer-item-name">${c.name}</div>
               <div class="customer-item-details">
                 ${c.email ? `<span><i class="fas fa-envelope"></i> ${c.email}</span>` : ''}
-                ${c.phone ? `<span><i class="fas fa-phone"></i> ${c.phone}</span>` : ''}
+                ${c.phone ? `<span>${renderPhoneLink(c.phone)}</span>` : ''}
               </div>
               <div class="customer-item-meta">
                 <small>ID: ${c.id} • ${new Date(c.created_at).toLocaleDateString('de-DE')}</small>
@@ -1714,7 +2256,7 @@
               <h2>${c.name}</h2>
               <div class="customer-profile-meta">
                 <span><i class="fas fa-envelope"></i> ${c.email || '-'}</span>
-                <span><i class="fas fa-phone"></i> ${c.phone || '-'}</span>
+                <span>${c.phone ? renderPhoneLink(c.phone) : '-'}</span>
                 <span><i class="fas fa-id-card"></i> ID: ${c.id}</span>
               </div>
             </div>
@@ -1778,7 +2320,7 @@
               <div class="customer-item-name">${partner.name}</div>
               <div class="customer-item-details">
                 ${partner.email ? `<span><i class="fas fa-envelope"></i> ${partner.email}</span>` : ''}
-                ${partner.phone ? `<span><i class="fas fa-phone"></i> ${partner.phone}</span>` : ''}
+                ${partner.phone ? `<span>${renderPhoneLink(partner.phone)}</span>` : ''}
               </div>
               <div class="customer-item-meta">
                 <small>ID: ${partner.id} • ${new Date(partner.created_at).toLocaleDateString('de-DE')}</small>
@@ -1814,6 +2356,7 @@
           if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
           const partner = await res.json();
           currentPartner = partner;
+          window.currentPartner = partner;
           renderPartnerProfile(partner);
           
           // Aktive Auswahl visuell markieren
@@ -1831,6 +2374,8 @@
       function renderPartnerProfile(partner) {
         const partnerProfile = document.getElementById('partner-profile');
         if (!partnerProfile) return;
+        const sanitize = (text) => (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const partnerNotesDisplay = partner.notes ? sanitize(partner.notes).replace(/\n/g, '<br>') : '-';
         
         partnerProfile.innerHTML = `
           <div class="customer-profile-header">
@@ -1838,7 +2383,7 @@
               <h2>${partner.name}</h2>
               <div class="customer-profile-meta">
                 <span><i class="fas fa-envelope"></i> ${partner.email || 'Keine E-Mail'}</span>
-                ${partner.phone ? `<span><i class="fas fa-phone"></i> ${partner.phone}</span>` : ''}
+                ${partner.phone ? `<span>${renderPhoneLink(partner.phone)}</span>` : ''}
                 <span><i class="fas fa-id-card"></i> ID: ${partner.id}</span>
               </div>
             </div>
@@ -1852,6 +2397,10 @@
             <div class="customer-profile-tabs">
               <button class="tab-btn active" data-tab="overview">Übersicht</button>
               <button class="tab-btn" data-tab="contracts">Kooperationsverträge</button>
+              <button class="tab-btn" data-tab="partner-notes">Notizen</button>
+              <button class="tab-btn" data-tab="reminder">
+                <i class="fas fa-envelope"></i> Erinnerungsmail
+              </button>
             </div>
             
             <div class="customer-profile-tab-content">
@@ -1869,7 +2418,7 @@
                     </div>
                     <div class="profile-item">
                       <label>Telefon:</label>
-                      <span>${partner.phone || '-'}</span>
+                      <span>${partner.phone ? renderPhoneLink(partner.phone, false) : '-'}</span>
                     </div>
                     <div class="profile-item">
                       <label>Firmenname:</label>
@@ -1904,10 +2453,22 @@
                       <span>${partner.provision || '-'}</span>
                     </div>
                     <div class="profile-item">
+                      <label>Notizen:</label>
+                      <span class="partner-notes-display">${partnerNotesDisplay}</span>
+                    </div>
+                    <div class="profile-item">
                       <label>ID:</label>
                       <span>${partner.id}</span>
                     </div>
                   </div>
+                </div>
+              </div>
+              
+              <div id="tab-partner-notes" class="tab-panel">
+                <div class="profile-section">
+                  <h3>Notizen</h3>
+                  <textarea id="partner-notes" rows="8" style="width: 100%; resize: vertical;">${partner.notes || ''}</textarea>
+                  <button class="btn-small" id="save-partner-notes" style="margin-top: 0.75rem;" data-partner-id="${partner.id}">Speichern</button>
                 </div>
               </div>
               
@@ -1925,6 +2486,26 @@
                   <div id="partner-contracts-list" class="contracts-list">
                     <p>Lade Kooperationsverträge...</p>
                   </div>
+                </div>
+              </div>
+              
+              <div id="tab-reminder" class="tab-panel">
+                <div class="profile-section">
+                  <h3>Erinnerungsmail an Kooperationspartner senden</h3>
+                  <div id="partner-selection" style="margin-bottom: 1rem;">
+                    <p>Lade Kooperationspartner...</p>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="reminder-subject">E-Mail Betreff *</label>
+                    <input type="text" id="reminder-subject" placeholder="z.B. Erinnerung: Wichtige Information" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="reminder-body">E-Mail Text</label>
+                    <textarea id="reminder-body" placeholder="Hallo,\n\nhier ist eine Erinnerung von HelpCare.\n\nMit besten Grüßen\nTeam HelpCare" style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+                  </div>
+                  <button id="send-reminder-btn" class="btn-small" style="width: 100%;">
+                    Erinnerungsmail senden
+                  </button>
                 </div>
               </div>
             </div>
@@ -1958,6 +2539,114 @@
         if (currentPartner) {
           loadPartnerKooperationsvertraege(partner.id);
         }
+        
+        // Event Listener für Erinnerungsmail-Button hinzufügen
+        const sendReminderBtn = partnerProfile.querySelector('#send-reminder-btn');
+        if (sendReminderBtn) {
+          // Entferne eventuelle alte Event Listener
+          const newSendReminderBtn = sendReminderBtn.cloneNode(true);
+          sendReminderBtn.parentNode.replaceChild(newSendReminderBtn, sendReminderBtn);
+          
+          newSendReminderBtn.addEventListener('click', async () => {
+            const subject = document.getElementById('reminder-subject')?.value.trim();
+            const body = document.getElementById('reminder-body')?.value.trim();
+            
+            if (!subject) {
+              alert('Bitte geben Sie einen E-Mail Betreff ein.');
+              return;
+            }
+            
+            // Ausgewählte Partner sammeln
+            const selectedPartners = [];
+            const checkboxes = document.querySelectorAll('#partner-selection input[type="checkbox"]:checked');
+            
+            if (checkboxes.length === 0) {
+              alert('Bitte wählen Sie mindestens einen Kooperationspartner aus.');
+              return;
+            }
+            
+            checkboxes.forEach(checkbox => {
+              selectedPartners.push({
+                email: checkbox.value,
+                name: checkbox.dataset.name
+              });
+            });
+            
+            if (!confirm(`Möchten Sie die Erinnerungsmail an ${selectedPartners.length} Kooperationspartner senden?`)) {
+              return;
+            }
+            
+            try {
+              newSendReminderBtn.disabled = true;
+              newSendReminderBtn.textContent = 'Sende...';
+              
+              const response = await fetch('/api/send-reminder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  subject: subject,
+                  body: body,
+                  partners: selectedPartners
+                })
+              });
+              
+              if (response.ok) {
+                alert(`✅ Erinnerungsmail erfolgreich an ${selectedPartners.length} Kooperationspartner gesendet!`);
+                // Formular zurücksetzen
+                const subjectInput = document.getElementById('reminder-subject');
+                const bodyInput = document.getElementById('reminder-body');
+                if (subjectInput) subjectInput.value = '';
+                if (bodyInput) bodyInput.value = '';
+                checkboxes.forEach(cb => cb.checked = false);
+              } else {
+                const error = await response.json();
+                alert('❌ Fehler beim Senden: ' + error.error);
+              }
+            } catch (error) {
+              console.error('Fehler beim Senden der Erinnerungsmail:', error);
+              alert('❌ Fehler beim Senden: ' + error.message);
+            } finally {
+              newSendReminderBtn.disabled = false;
+              newSendReminderBtn.textContent = 'Erinnerungsmail senden';
+            }
+          });
+        }
+
+        // Notizen speichern
+        const savePartnerNotesBtn = partnerProfile.querySelector('#save-partner-notes');
+        if (savePartnerNotesBtn) {
+          savePartnerNotesBtn.addEventListener('click', async () => {
+            const textarea = partnerProfile.querySelector('#partner-notes');
+            if (!textarea) return;
+            const notesValue = textarea.value;
+            try {
+              savePartnerNotesBtn.disabled = true;
+              savePartnerNotesBtn.textContent = 'Speichere...';
+              const res = await fetch(`/api/kooperationspartner/${partner.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: notesValue })
+              });
+              const data = await res.json().catch(()=>({}));
+              if (!res.ok) {
+                throw new Error(data.error || 'Unbekannter Fehler');
+              }
+              alert('✅ Notizen gespeichert');
+              partner.notes = data.notes;
+              const notesDisplay = partnerProfile.querySelector('.partner-notes-display');
+              if (notesDisplay) {
+                const sanitized = (data.notes || '-').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                notesDisplay.innerHTML = sanitized;
+              }
+            } catch (e) {
+              console.error('Fehler beim Speichern der Partner-Notizen:', e);
+              alert('❌ Fehler beim Speichern der Notizen: ' + e.message);
+            } finally {
+              savePartnerNotesBtn.disabled = false;
+              savePartnerNotesBtn.textContent = 'Speichern';
+            }
+          });
+        }
       }
       
       // Tab-Funktionen für Partner
@@ -1984,10 +2673,11 @@
         if (tabName === 'contracts' && partnerId) {
           loadPartnerKooperationsvertraege(partnerId);
         }
+        if (tabName === 'reminder') {
+          loadPartnersForReminder();
+        }
       }
       
-      let currentPartner = null;
-
       // Neuen Kooperationspartner hinzufügen
       if (addPartnerBtn) {
         addPartnerBtn.addEventListener('click', () => {
@@ -2038,6 +2728,8 @@
           document.getElementById('edit-partner-register').value = partner.commercial_register || '';
           document.getElementById('edit-partner-vat').value = partner.vat_id || '';
           document.getElementById('edit-partner-director').value = partner.managing_director || '';
+          document.getElementById('edit-partner-notes').value = partner.notes || '';
+          document.getElementById('edit-partner-provision').value = partner.provision || '';
           
           // Partner-ID für Update speichern
           document.getElementById('edit-partner-form').dataset.partnerId = partnerId;
@@ -2122,7 +2814,8 @@
             identification_number: document.getElementById('new-partner-id').value.trim(),
             commercial_register: document.getElementById('new-partner-register').value.trim(),
             vat_id: document.getElementById('new-partner-vat').value.trim(),
-            managing_director: document.getElementById('new-partner-director').value.trim()
+            managing_director: document.getElementById('new-partner-director').value.trim(),
+            notes: document.getElementById('new-partner-notes').value
           };
           
           await addPartner(formData);
@@ -2146,7 +2839,8 @@
             commercial_register: document.getElementById('edit-partner-register').value.trim(),
             vat_id: document.getElementById('edit-partner-vat').value.trim(),
             managing_director: document.getElementById('edit-partner-director').value.trim(),
-            provision: document.getElementById('edit-partner-provision').value.trim()
+            provision: document.getElementById('edit-partner-provision').value.trim(),
+            notes: document.getElementById('edit-partner-notes').value
           };
           
           await updatePartner(partnerId, formData);
@@ -2221,7 +2915,59 @@
         });
       }
 
-      // Erinnerungsmail senden
+      // Partner für Erinnerungsmail laden
+      async function loadPartnersForReminder() {
+        const partnerSelection = document.getElementById('partner-selection');
+        if (!partnerSelection) return;
+        
+        try {
+          const res = await fetch('/api/kooperationspartner');
+          const data = await res.json();
+          const partners = data.items || data || [];
+          
+          if (partners.length === 0) {
+            partnerSelection.innerHTML = '<p>Keine Kooperationspartner gefunden.</p>';
+            return;
+          }
+          
+          partnerSelection.innerHTML = `
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Kooperationspartner auswählen:</label>
+            <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 8px;">
+              ${partners.map(partner => `
+                <label style="display: block; padding: 4px; cursor: pointer;">
+                  <input type="checkbox" value="${partner.email}" data-name="${partner.name}" style="margin-right: 8px;">
+                  ${partner.name} (${partner.email})
+                </label>
+              `).join('')}
+            </div>
+          `;
+        } catch (e) {
+          console.error('Fehler beim Laden der Kooperationspartner:', e);
+          partnerSelection.innerHTML = '<p>Fehler beim Laden der Kooperationspartner.</p>';
+        }
+      }
+      
+      // Erinnerungsmail senden (globaler Button oben)
+      const sendReminderGlobalBtn = document.getElementById('send-reminder-global-btn');
+      if (sendReminderGlobalBtn) {
+        sendReminderGlobalBtn.addEventListener('click', () => {
+          // Öffne den Erinnerungsmail-Tab im ersten Partner-Profil oder zeige Hinweis
+          const partnerProfile = document.getElementById('partner-profile');
+          if (partnerProfile && partnerProfile.innerHTML && !partnerProfile.innerHTML.includes('customer-profile-empty')) {
+            // Partner-Profil ist bereits geöffnet, wechsle zum Erinnerungsmail-Tab
+            const reminderTab = partnerProfile.querySelector('[data-tab="reminder"]');
+            if (reminderTab) {
+              reminderTab.click();
+            } else {
+              alert('Bitte öffnen Sie zuerst ein Partner-Profil, um Erinnerungsmails zu senden.');
+            }
+          } else {
+            alert('Bitte wählen Sie zuerst einen Kooperationspartner aus, um Erinnerungsmails zu senden.');
+          }
+        });
+      }
+      
+      // Erinnerungsmail senden (Button im Tab)
       const sendReminderBtn = document.getElementById('send-reminder-btn');
       if (sendReminderBtn) {
         sendReminderBtn.addEventListener('click', async () => {
@@ -2318,6 +3064,7 @@
       const addCustomerBtn = document.getElementById('add-customer-btn');
       const customerProfile = document.getElementById('customer-profile');
       let currentCustomer = null;
+      window.currentCustomer = null;
 
       // Kunden laden
       async function loadCustomers() {
@@ -2330,13 +3077,45 @@
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
         
-        const customers = await res.json();
+        const data = await res.json();
+        // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+        const customers = Array.isArray(data) ? data : (data.items || []);
         console.log('Kunden geladen:', customers);
         renderCustomers(customers);
       } catch (e) {
         console.error('Fehler beim Laden der Kunden:', e);
         customersList.innerHTML = `<p>Fehler beim Laden der Kunden: ${e.message}</p>`;
       }
+    }
+
+    // Status in CSS-Klasse umwandeln
+    function getStatusClass(status) {
+      if (!status) return '';
+      const statusLower = status.toLowerCase();
+      if (statusLower === 'im einsatz') return 'status-im-einsatz';
+      if (statusLower === 'inaktiv') return 'status-inaktiv';
+      if (statusLower === 'angebot versendet') return 'status-angebot-versendet';
+      if (statusLower === 'abgesagt') return 'status-abgesagt';
+      if (statusLower === 'verstorben') return 'status-verstorben';
+      return '';
+    }
+
+    // Telefonnummer für 3CX formatieren und Link erstellen
+    function formatPhoneLink(phone) {
+      if (!phone) return '';
+      // Telefonnummer bereinigen (Leerzeichen, Bindestriche, etc. entfernen)
+      const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+      // 3CX WebRTC URL erstellen mit Port 5001 und korrekter URL-Kodierung
+      const encodedPhone = encodeURIComponent(cleanPhone);
+      return `https://helpcare.on3cx.de:5001/#/call?phone=${encodedPhone}`;
+    }
+
+    // Telefonnummer als klickbaren Link rendern
+    function renderPhoneLink(phone, showIcon = true) {
+      if (!phone) return showIcon ? '<span><i class="fas fa-phone"></i> Keine Telefonnummer</span>' : 'Keine Telefonnummer';
+      const phoneUrl = formatPhoneLink(phone);
+      const icon = showIcon ? '<i class="fas fa-phone"></i> ' : '';
+      return `<a href="${phoneUrl}" target="_blank" style="color: inherit; text-decoration: none; cursor: pointer;" title="Über 3CX anrufen">${icon}${phone}</a>`;
     }
 
     // Kunden rendern
@@ -2346,20 +3125,23 @@
         return;
       }
       
-      customersList.innerHTML = customers.map(customer => `
-        <div class="customer-item" data-id="${customer.id}">
+      customersList.innerHTML = customers.map(customer => {
+        const statusClass = getStatusClass(customer.status);
+        return `
+        <div class="customer-item ${statusClass}" data-id="${customer.id}">
           <div class="customer-item-info">
             <div class="customer-item-name">${customer.name}</div>
             <div class="customer-item-details">
               ${customer.email ? `<span><i class="fas fa-envelope"></i> ${customer.email}</span>` : ''}
-              ${customer.phone ? `<span><i class="fas fa-phone"></i> ${customer.phone}</span>` : ''}
+              ${customer.phone ? `<span>${renderPhoneLink(customer.phone)}</span>` : ''}
             </div>
             <div class="customer-item-meta">
               <small>ID: ${customer.id} • Letzter Kontakt: ${new Date(customer.last_contact).toLocaleDateString('de-DE')}</small>
             </div>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       
       // Event Listeners für Kundenauswahl und Rechtsklick hinzufügen
       customersList.querySelectorAll('.customer-item').forEach(item => {
@@ -2392,6 +3174,7 @@
           const customer = await res.json();
           console.log('Kunde geladen:', customer);
           currentCustomer = customer;
+          window.currentCustomer = customer;
           renderCustomerProfile(customer);
           
           // Aktive Auswahl visuell markieren
@@ -2422,7 +3205,7 @@
             <h2>${customer.name}</h2>
             <div class="customer-profile-meta">
               <span><i class="fas fa-envelope"></i> ${customer.email || 'Keine E-Mail'}</span>
-              <span><i class="fas fa-phone"></i> ${customer.phone || 'Keine Telefonnummer'}</span>
+              <span>${renderPhoneLink(customer.phone)}</span>
               <span><i class="fas fa-id-card"></i> ID: ${customer.id}</span>
             </div>
           </div>
@@ -2438,6 +3221,7 @@
             <button class="tab-btn" data-tab="offers">Angebote</button>
             <button class="tab-btn" data-tab="questionnaires">Befragungsbögen</button>
             <button class="tab-btn" data-tab="contracts">Dienstleistungsverträge</button>
+            <button class="tab-btn" data-tab="notes">Notizen</button>
             <button class="tab-btn" data-tab="history">Kontakthistorie</button>
           </div>
           
@@ -2456,7 +3240,11 @@
                   </div>
                   <div class="profile-item">
                     <label>Telefon:</label>
-                    <span>${customer.phone || '-'}</span>
+                    <span>${customer.phone ? renderPhoneLink(customer.phone, false) : '-'}</span>
+                  </div>
+                  <div class="profile-item">
+                    <label>Mobile:</label>
+                    <span>${customer.mobile_phone ? renderPhoneLink(customer.mobile_phone, false) : '-'}</span>
                   </div>
                   <div class="profile-item">
                     <label>ID:</label>
@@ -2536,6 +3324,32 @@
               </div>
             </div>
             
+            <div id="tab-notes" class="tab-panel">
+              <div class="profile-section">
+                <h3>Notizen & Status</h3>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 12px; max-width: 720px;">
+                  <div>
+                    <label for="customer-notes">Notizen</label>
+                    <textarea id="customer-notes" rows="6" style="width:100%; resize: vertical;">${customer.notes || ''}</textarea>
+                  </div>
+                  <div>
+                    <label for="customer-status">Status</label>
+                    <select id="customer-status" style="width:100%;">
+                      <option value="">– Bitte wählen –</option>
+                      <option value="Angebot versendet" ${customer.status === 'Angebot versendet' ? 'selected' : ''}>Angebot versendet</option>
+                      <option value="Abgesagt" ${customer.status === 'Abgesagt' ? 'selected' : ''}>Abgesagt</option>
+                      <option value="Im Einsatz" ${customer.status === 'Im Einsatz' ? 'selected' : ''}>Im Einsatz</option>
+                      <option value="Inaktiv" ${customer.status === 'Inaktiv' ? 'selected' : ''}>Inaktiv</option>
+                      <option value="Verstorben" ${customer.status === 'Verstorben' ? 'selected' : ''}>Verstorben</option>
+                    </select>
+                  </div>
+                  <div>
+                    <button class="btn-small" id="save-notes-status" data-customer-id="${customer.id}">Speichern</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div id="tab-history" class="tab-panel">
               <div class="profile-section">
                 <h3>Kontakthistorie</h3>
@@ -2578,6 +3392,39 @@
           deleteCustomer(customerId);
         });
       });
+
+      // Notizen/Status speichern
+      const saveNotesBtn = customerProfile.querySelector('#save-notes-status');
+      if (saveNotesBtn) {
+        saveNotesBtn.addEventListener('click', async (e) => {
+          const cid = parseInt(e.target.dataset.customerId);
+          const notesEl = customerProfile.querySelector('#customer-notes');
+          const statusEl = customerProfile.querySelector('#customer-status');
+          const payload = {
+            notes: notesEl ? notesEl.value : '',
+            status: statusEl ? statusEl.value : null
+          };
+          try {
+            const res = await fetch(`/api/customers/${cid}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('Speichern fehlgeschlagen');
+            const updated = await res.json();
+            // UI aktualisieren (z. B. Overview-Notizen kurzfristig)
+            currentCustomer = updated;
+            window.currentCustomer = updated;
+            // Kundenliste neu laden, um Status-Änderung anzuzeigen
+            await loadCustomers();
+            // Kunde erneut auswählen, um Profil zu aktualisieren
+            await selectCustomer(cid);
+            alert('✅ Notizen und Status gespeichert');
+          } catch (err) {
+            alert('❌ Fehler: ' + (err?.message || err));
+          }
+        });
+      }
     }
 
       // Tab-Funktionen
@@ -2632,12 +3479,12 @@
         modal.className = 'modal-overlay';
         modal.style.display = 'block';
         modal.innerHTML = `
-          <div class="modal-content glass" style="max-width: 600px;">
+          <div class="modal-content glass" style="max-width: 600px; max-height: 90vh; display: flex; flex-direction: column;">
             <div class="modal-header">
               <h3>Kunde bearbeiten</h3>
               <button class="btn-small close-modal">Schließen</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-y: auto; flex: 1; min-height: 0;">
               <form id="edit-customer-form">
                 <div class="form-group">
                   <label for="edit-name">Name:</label>
@@ -2650,6 +3497,10 @@
                 <div class="form-group">
                   <label for="edit-phone">Telefon:</label>
                   <input type="tel" id="edit-phone" value="${customer.phone || ''}">
+                </div>
+                <div class="form-group">
+                  <label for="edit-mobile-phone">Mobile:</label>
+                  <input type="tel" id="edit-mobile-phone" value="${customer.mobile_phone || ''}">
                 </div>
                 <div class="form-group">
                   <label for="edit-company">Unternehmen:</label>
@@ -2712,6 +3563,7 @@
           name: modal.querySelector('#edit-name').value,
           email: modal.querySelector('#edit-email').value,
           phone: modal.querySelector('#edit-phone').value,
+          mobile_phone: modal.querySelector('#edit-mobile-phone').value,
           company: modal.querySelector('#edit-company').value,
           street_address: modal.querySelector('#edit-street').value,
           postal_code: modal.querySelector('#edit-postal').value,
@@ -2758,10 +3610,11 @@
       const name = prompt('Kundenname:');
       const email = prompt('E-Mail (optional):');
       const phone = prompt('Telefon (optional):');
+      const mobile_phone = prompt('Mobile (optional):');
       
       if (!name) return;
       
-      addCustomer({ name, email, phone });
+      addCustomer({ name, email, phone, mobile_phone });
     });
 
     // Kunde hinzufügen
@@ -2820,7 +3673,9 @@
     async function loadPartnersForKooperationsvertrag() {
       try {
         const res = await fetch('/api/kooperationspartner');
-        const partners = await res.json();
+        const data = await res.json();
+        // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+        const partners = Array.isArray(data) ? data : (data.items || []);
         
         const senderSelect = document.getElementById('sender-partner');
         const receiverSelect = document.getElementById('receiver-partner');
@@ -2983,6 +3838,15 @@
       });
     }
 
+    // Utility: Debounce, um schnelle Mehrfachklicks/Requests zu entlasten
+    function debounce(fn, delay) {
+      let timerId;
+      return function(...args) {
+        clearTimeout(timerId);
+        timerId = setTimeout(() => fn.apply(this, args), delay);
+      };
+    }
+
     // Event Listeners für Dienstleistungsverträge hinzufügen
     document.addEventListener('click', async (e) => {
       if (e.target.id === 'create-contract-btn') {
@@ -3021,18 +3885,19 @@
         const contractId = button.dataset.id || button.dataset.contractId;
         console.log('DocuSeal Button clicked, contractId:', contractId);
         
-        // Prüfe ob es sich um einen Kooperationsvertrag im Partner-Modal handelt
+        // Prüfe ob es sich um einen Kooperationsvertrag handelt (Button im partner-contracts-list Container)
         if (contractId) {
-          const partnerProfile = document.getElementById('partner-profile');
-          // Wenn Partner-Modal offen ist, lass den anderen Event-Listener das handhaben
-          if (modal && modal.dataset.partnerId) {
-            console.log('Partner Modal ist offen, überspringe diesen Listener');
-            return; // Exit hier, damit der andere Event-Listener (Zeile 3554) das Event verarbeitet
+          const partnerContractsList = button.closest('#partner-contracts-list');
+          // Wenn Button im partner-contracts-list Container ist, lass den anderen Event-Listener das handhaben
+          if (partnerContractsList) {
+            console.log('Partner Contracts List erkannt, überspringe diesen Listener für Kooperationsvertrag');
+            return; // Exit hier, damit der andere Event-Listener (weiter unten) das Event verarbeitet
           }
           
-          // Nur für Dienstleistungsverträge (nicht im Partner-Modal)
+          // Nur für Dienstleistungsverträge (nicht im Partner-Profil)
           console.log('Verarbeite Dienstleistungsvertrag');
           await sendContractForSignature(parseInt(contractId));
+          return; // Verhindere weitere Event-Propagation
         }
       }
       
@@ -3041,6 +3906,15 @@
         const button = e.target.classList.contains('download-signed-btn') ? e.target : e.target.closest('.download-signed-btn');
         const contractId = button.dataset.id || button.dataset.contractId;
         if (contractId) {
+          // Prüfe ob der Button sich innerhalb des partner-contracts-list Containers befindet
+          const partnerContractsList = button.closest('#partner-contracts-list');
+          if (partnerContractsList) {
+            // Es ist ein Kooperationsvertrag - lass den anderen Event-Listener das handhaben
+            console.log('Partner Contracts List erkannt, überspringe diesen Listener für Kooperationsvertrag Download');
+            return; // Exit hier, damit der andere Event-Listener das Event verarbeitet
+          }
+          // Nur für Dienstleistungsverträge (nicht im Partner-Profil)
+          console.log('Dienstleistungsvertrag Download');
           await downloadSignedContract(parseInt(contractId));
         }
       }
@@ -3050,7 +3924,8 @@
         const button = e.target.classList.contains('check-status-btn') ? e.target : e.target.closest('.check-status-btn');
         const contractId = button.dataset.id || button.dataset.contractId;
         if (contractId) {
-          await checkContractStatus(parseInt(contractId));
+          const debounced = debounce(checkContractStatus, 600);
+          await debounced(parseInt(contractId));
         }
       }
       
@@ -3073,7 +3948,9 @@
         const res = await fetch('/api/dienstleistungsvertraege');
         if (!res.ok) throw new Error('Fehler beim Laden der Verträge');
         
-        const allContracts = await res.json();
+        const data = await res.json();
+        // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+        const allContracts = Array.isArray(data) ? data : (data.items || []);
         const customerContracts = allContracts.filter(c => c.customer_id === customerId);
         
         renderContractsList(customerContracts);
@@ -3082,6 +3959,37 @@
         document.getElementById('contracts-list').innerHTML = `<p>Fehler: ${e.message}</p>`;
       }
     }
+    window.loadContractsForCustomer = loadContractsForCustomer;
+
+    // Lazy Loading: Verträge erst laden, wenn der Tab sichtbar wird
+    (function setupLazyLoadContractsTab() {
+      const tabEl = document.getElementById('tab-contracts');
+      const listEl = document.getElementById('contracts-list');
+      if (!tabEl || !listEl) return;
+      const loadIfNeeded = async () => {
+        if (listEl.dataset.loaded === '1') return;
+        const customerId = window.currentCustomer?.id;
+        if (customerId) {
+          await loadContractsForCustomer(customerId);
+          listEl.dataset.loaded = '1';
+        }
+      };
+      // Falls Tab schon aktiv ist, sofort versuchen
+      if (tabEl.offsetParent !== null) {
+        loadIfNeeded();
+        return;
+      }
+      // Sonst via IntersectionObserver beim Sichtbarwerden laden
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            loadIfNeeded();
+            io.disconnect();
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(tabEl);
+    })();
 
     // Verträge-Liste rendern
     function renderContractsList(contracts) {
@@ -3107,12 +4015,12 @@
             ${contract.zoho_request_id ? `<div>Zoho ID: ${contract.zoho_request_id}</div>` : ''}
           </div>
           <div class="contract-actions" style="display: flex; gap: 0.5rem;">
-            ${contract.status === 'draft' ? `
+            ${contract.status === 'draft' || contract.status === 'generated' ? `
               <button class="btn-small send-signature-btn" data-contract-id="${contract.id}">
                 <i class="fas fa-signature"></i> Zur Signatur senden
               </button>
             ` : ''}
-            ${contract.status === 'sent' ? `
+            ${contract.status === 'sent' || contract.status === 'customer_signed' || contract.status === 'partner_signed' ? `
               <button class="btn-small check-status-btn" data-contract-id="${contract.id}">
                 <i class="fas fa-sync"></i> Status prüfen
               </button>
@@ -3120,6 +4028,11 @@
             ${contract.signed_pdf_filename ? `
               <button class="btn-small download-signed-btn" data-contract-id="${contract.id}">
                 <i class="fas fa-download"></i> Unterschrieben herunterladen
+              </button>
+            ` : ''}
+            ${contract.status === 'completed' && !contract.signed_pdf_filename ? `
+              <button class="btn-small check-status-btn" data-contract-id="${contract.id}">
+                <i class="fas fa-sync"></i> Status prüfen
               </button>
             ` : ''}
           </div>
@@ -3144,7 +4057,9 @@
     async function showCreateContractModal(customerId) {
       // Kooperationspartner laden
       const partnersRes = await fetch('/api/kooperationspartner');
-      const partners = await partnersRes.json();
+      const data = await partnersRes.json();
+      // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+      const partners = Array.isArray(data) ? data : (data.items || []);
       
       if (!partners.length) {
         alert('Keine Kooperationspartner vorhanden. Bitte zuerst einen Kooperationspartner anlegen.');
@@ -3165,6 +4080,11 @@
               <div class="form-group">
                 <label for="contract-number">Vertragsnummer:</label>
                 <input type="text" id="contract-number" required placeholder="z.B. DLV-2024-001">
+              </div>
+              <div class="form-group">
+                <label for="contract-date">Vertragsdatum:</label>
+                <input type="date" id="contract-date" required>
+                <small style="color: #666; font-size: 0.8rem;">Datum, das im Vertrag verwendet wird (Standard: heute)</small>
               </div>
               <div class="form-group">
                 <label for="contract-partner">Kooperationspartner:</label>
@@ -3191,6 +4111,13 @@
       
       document.body.appendChild(modal);
       
+      // Datumsfeld mit heutigem Datum initialisieren
+      const dateInput = modal.querySelector('#contract-date');
+      if (dateInput) {
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+      }
+      
       // Event Listeners
       modal.querySelector('.close-modal').addEventListener('click', () => {
         document.body.removeChild(modal);
@@ -3209,6 +4136,7 @@
           customer_id: customerId,
           kooperationspartner_id: parseInt(modal.querySelector('#contract-partner').value),
           contract_number: modal.querySelector('#contract-number').value,
+          contract_date: modal.querySelector('#contract-date').value,
           monthly_rate: parseFloat(modal.querySelector('#monthly-rate').value) || null
         };
         
@@ -3246,7 +4174,7 @@
         // Verträge aktualisieren um neuen Status anzuzeigen
         const contractsList = document.getElementById('contracts-list');
         if (contractsList) {
-          const customerId = currentCustomer?.id;
+          const customerId = window.currentCustomer?.id;
           if (customerId) {
             await loadContractsForCustomer(customerId);
           }
@@ -3256,32 +4184,13 @@
       }
     }
 
-    // Zur Signatur senden (unsere eigene Signatur-Funktionalität)
+    // Zur Signatur senden (Dienstleistungsvertrag mit Preview/Editor)
     async function sendContractForSignature(contractId) {
-      if (!confirm('Vertrag zur digitalen Signatur per E-Mail an Kunde und Partner senden?')) return;
-      
       try {
-        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}/send-for-signature`, {
-          method: 'POST'
-        });
-        
+        const res = await fetch(`/api/dienstleistungsvertraege/${contractId}/preview`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Fehler beim Senden');
-        
-        if (data.success) {
-          alert('✅ Vertrag erfolgreich zur Signatur gesendet!\n\nDer Kunde und der Kooperationspartner erhalten jeweils eine E-Mail mit einem Link zur digitalen Unterschrift.');
-        } else {
-          throw new Error(data.error || 'Unbekannter Fehler');
-        }
-        
-        // Verträge aktualisieren
-        const contractsList = document.getElementById('contracts-list');
-        if (contractsList) {
-          const customerId = currentCustomer?.id;
-          if (customerId) {
-            await loadContractsForCustomer(customerId);
-          }
-        }
+        if (!res.ok) throw new Error(data.error || 'Preview konnte nicht geladen werden');
+        showDienstleistungsvertragPreviewModal(contractId, data.html);
       } catch (e) {
         alert('❌ Fehler: ' + e.message);
       }
@@ -3313,7 +4222,7 @@
           // Verträge aktualisieren
           const contractsList = document.getElementById('contracts-list');
           if (contractsList) {
-            const customerId = currentCustomer?.id;
+            const customerId = window.currentCustomer?.id;
             if (customerId) {
               await loadContractsForCustomer(customerId);
             }
@@ -3345,7 +4254,9 @@
             } else {
               // Falls kein Kunde ausgewählt, alle Verträge neu laden
               const res = await fetch('/api/dienstleistungsvertraege');
-              const allContracts = await res.json();
+              const data = await res.json();
+              // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+              const allContracts = Array.isArray(data) ? data : (data.items || []);
               renderContractsList(allContracts);
             }
           } else {
@@ -3386,7 +4297,6 @@
               await loadKooperationsvertraegeForPartner();
             } else if (partnerContractsList) {
               // Partner-Verträge neu laden
-              const currentPartner = window.currentPartner;
               if (currentPartner && currentPartner.id) {
                 await loadPartnerKooperationsvertraege(currentPartner.id);
               }
@@ -3485,7 +4395,9 @@
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
         
-        const customers = await res.json();
+        const data = await res.json();
+        // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
+        const customers = Array.isArray(data) ? data : (data.items || []);
         console.log('Dropdown Kunden geladen:', customers);
         
         // Dropdown leeren und Kunden hinzufügen
@@ -3669,10 +4581,11 @@
         const button = e.target.closest('.send-docuseal-btn') || e.target.closest('.send-signature-btn');
         const contractId = button.dataset.id || button.dataset.contractId;
         if (contractId) {
-          // Prüfe ob es sich im Partner-Profil befindet
-          const partnerProfile = document.getElementById('partner-profile');
-          if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
+          // Prüfe ob der Button sich innerhalb des partner-contracts-list Containers befindet
+          const partnerContractsList = button.closest('#partner-contracts-list');
+          if (partnerContractsList) {
             // Es ist ein Kooperationsvertrag
+            console.log('Kooperationsvertrag erkannt, versende zur Signatur');
             await sendKooperationsvertragForSignature(parseInt(contractId));
             // Liste aktualisieren
             if (currentPartner) {
@@ -3680,6 +4593,7 @@
             }
           } else {
             // Es ist ein Dienstleistungsvertrag
+            console.log('Dienstleistungsvertrag erkannt, versende zur Signatur');
             await sendContractForSignature(parseInt(contractId));
           }
         }
@@ -3693,14 +4607,16 @@
           const partnerProfile = document.getElementById('partner-profile');
           if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
             // Es ist ein Kooperationsvertrag
-            await checkKooperationsvertragStatus(parseInt(contractId));
+            const debouncedKoop = debounce(checkKooperationsvertragStatus, 600);
+            await debouncedKoop(parseInt(contractId));
             // Liste aktualisieren
             if (currentPartner) {
               await loadPartnerKooperationsvertraege(currentPartner.id);
             }
           } else {
             // Es ist ein Dienstleistungsvertrag
-            await checkContractStatus(parseInt(contractId));
+            const debounced = debounce(checkContractStatus, 600);
+            await debounced(parseInt(contractId));
           }
         }
       }
@@ -3708,13 +4624,15 @@
       if (e.target.closest('.download-signed-btn')) {
         const button = e.target.closest('.download-signed-btn');
         const contractId = button.dataset.id || button.dataset.contractId;
-        // Prüfe ob es sich im Partner-Profil befindet
-        const partnerProfile = document.getElementById('partner-profile');
-        if (partnerProfile && partnerProfile.innerHTML && partnerProfile.innerHTML.includes('partner-contracts-list')) {
+        // Prüfe ob der Button sich innerhalb des partner-contracts-list Containers befindet
+        const partnerContractsList = button.closest('#partner-contracts-list');
+        if (partnerContractsList) {
           // Es ist ein Kooperationsvertrag
+          console.log('Kooperationsvertrag Download erkannt');
           await downloadSignedKooperationsvertrag(contractId);
         } else {
           // Es ist ein Dienstleistungsvertrag
+          console.log('Dienstleistungsvertrag Download erkannt');
           await downloadSignedContract(parseInt(contractId));
         }
       }
@@ -3790,27 +4708,289 @@
     
     async function sendKooperationsvertragForSignature(contractId) {
       try {
-        const res = await fetch(`/api/kooperationsvertraege/${contractId}/send-docuseal`, {
-          method: 'POST'
-        });
-        
-        if (res.ok) {
-          const result = await res.json();
-          alert('✅ Kooperationsvertrag erfolgreich zur Signatur gesendet');
-          // Liste aktualisieren
-          const partnerProfile = document.getElementById('partner-profile');
-          const partnerId = modal.dataset.partnerId;
-          if (partnerId) {
-            await loadPartnerKooperationsvertraege(partnerId);
-          }
-        } else {
-          const error = await res.json();
-          alert(`❌ Fehler beim Senden: ${error.error}`);
-        }
+        const res = await fetch(`/api/kooperationsvertraege/${contractId}/preview`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Preview konnte nicht geladen werden');
+        showKooperationsvertragPreviewModal(contractId, data.html);
       } catch (e) {
-        console.error('Fehler beim Senden:', e);
-        alert('❌ Fehler beim Senden zur Signatur');
+        alert('❌ Fehler beim Laden der Vorschau: ' + e.message);
       }
+    }
+    
+    function showKooperationsvertragPreviewModal(contractId, htmlContent) {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 1000px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+          <div class="modal-header">
+            <h3>Kooperationsvertrag prüfen & bearbeiten</h3>
+            <button class="btn-small btn-cancel" type="button">×</button>
+          </div>
+          <div class="modal-body" style="flex: 1; min-height: 0; display: flex; gap: 1rem; overflow-y: auto; overflow-x: hidden; padding: 1rem;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+              <label style="font-weight: 600; margin-bottom: 0.5rem;">Inhalt bearbeiten</label>
+              <div class="rich-editor">
+                <div class="editor-toolbar">
+                  <button type="button" data-command="undo" title="Rückgängig">↺</button>
+                  <button type="button" data-command="redo" title="Wiederholen">↻</button>
+                  <button type="button" data-command="bold" title="Fett">B</button>
+                  <button type="button" data-command="italic" title="Kursiv">I</button>
+                  <button type="button" data-command="underline" title="Unterstreichen">U</button>
+                  <button type="button" data-command="insertUnorderedList" title="Aufzählung">• Liste</button>
+                  <button type="button" data-command="insertOrderedList" title="Nummerierte Liste">1. Liste</button>
+                  <button type="button" data-command="formatBlock" data-value="H3" title="Überschrift">H3</button>
+                  <button type="button" data-command="formatBlock" data-value="P" title="Absatz">Absatz</button>
+                  <button type="button" data-command="removeFormat" title="Formatierung entfernen">Format reset</button>
+                  <button type="button" id="toggle-html-view" title="Zwischen HTML und visueller Ansicht wechseln">HTML-Ansicht</button>
+                </div>
+                <div id="kooperationsvertrag-editor" class="editor-content" contenteditable="true"></div>
+                <textarea id="kooperationsvertrag-html" class="editor-html-source"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn-small btn-cancel" type="button">Abbrechen</button>
+            <button class="btn-small btn-send" type="button" style="background-color: #f58060; color: white;">Zur Signatur senden</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      const editor = modal.querySelector('#kooperationsvertrag-editor');
+      const htmlSource = modal.querySelector('#kooperationsvertrag-html');
+      const toggleHtmlBtn = modal.querySelector('#toggle-html-view');
+      let isHtmlMode = false;
+      const cancelButtons = modal.querySelectorAll('.btn-cancel');
+      const sendButton = modal.querySelector('.btn-send');
+      const toolbarButtons = modal.querySelectorAll('.editor-toolbar button[data-command]');
+      
+      const getCurrentHtml = () => (isHtmlMode ? htmlSource.value : editor.innerHTML || '');
+      const setEditorHtml = (html) => {
+        editor.innerHTML = html || '';
+        htmlSource.value = html || '';
+      };
+      
+      setEditorHtml(htmlContent || '');
+      
+      editor.addEventListener('input', () => {
+        if (!isHtmlMode) {
+          htmlSource.value = editor.innerHTML;
+        }
+      });
+      
+      editor.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertText', false, text);
+      });
+      
+      toolbarButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (isHtmlMode) return;
+          const command = btn.dataset.command;
+          const value = btn.dataset.value || null;
+          if (!command) return;
+          editor.focus();
+          document.execCommand(command, false, value);
+          htmlSource.value = editor.innerHTML;
+        });
+      });
+      
+      if (toggleHtmlBtn) {
+        toggleHtmlBtn.addEventListener('click', () => {
+          if (!isHtmlMode) {
+            htmlSource.value = editor.innerHTML;
+            htmlSource.style.display = 'block';
+            editor.style.display = 'none';
+            toggleHtmlBtn.textContent = 'Visuelle Ansicht';
+            isHtmlMode = true;
+          } else {
+            setEditorHtml(htmlSource.value);
+            htmlSource.style.display = 'none';
+            editor.style.display = 'block';
+            toggleHtmlBtn.textContent = 'HTML-Ansicht';
+            isHtmlMode = false;
+            editor.focus();
+          }
+        });
+      }
+      
+      setTimeout(() => editor.focus(), 100);
+      
+      const closeModal = () => modal.remove();
+      cancelButtons.forEach(btn => btn.addEventListener('click', closeModal));
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+      
+      sendButton.addEventListener('click', async () => {
+        try {
+          sendButton.disabled = true;
+          sendButton.textContent = 'Sende...';
+          const res = await fetch(`/api/kooperationsvertraege/${contractId}/send-docuseal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html_content: getCurrentHtml() })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || 'Versand fehlgeschlagen');
+          }
+          alert('✅ Kooperationsvertrag erfolgreich zur Signatur gesendet');
+          closeModal();
+          if (currentPartner && currentPartner.id) {
+            await loadPartnerKooperationsvertraege(currentPartner.id);
+          }
+        } catch (e) {
+          alert('❌ Fehler beim Senden: ' + e.message);
+        } finally {
+          sendButton.disabled = false;
+          sendButton.textContent = 'Zur Signatur senden';
+        }
+      });
+    }
+    
+    function showDienstleistungsvertragPreviewModal(contractId, htmlContent) {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `
+        <div class="modal-content glass" style="max-width: 1000px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+          <div class="modal-header">
+            <h3>Dienstleistungsvertrag prüfen & bearbeiten</h3>
+            <button class="btn-small btn-cancel" type="button">×</button>
+          </div>
+          <div class="modal-body" style="flex: 1; min-height: 0; display: flex; gap: 1rem; overflow-y: auto; overflow-x: hidden; padding: 1rem;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+              <label style="font-weight: 600; margin-bottom: 0.5rem;">Inhalt bearbeiten</label>
+              <div class="rich-editor">
+                <div class="editor-toolbar">
+                  <button type="button" data-command="undo" title="Rückgängig">↺</button>
+                  <button type="button" data-command="redo" title="Wiederholen">↻</button>
+                  <button type="button" data-command="bold" title="Fett">B</button>
+                  <button type="button" data-command="italic" title="Kursiv">I</button>
+                  <button type="button" data-command="underline" title="Unterstreichen">U</button>
+                  <button type="button" data-command="insertUnorderedList" title="Aufzählung">• Liste</button>
+                  <button type="button" data-command="insertOrderedList" title="Nummerierte Liste">1. Liste</button>
+                  <button type="button" data-command="formatBlock" data-value="H3" title="Überschrift">H3</button>
+                  <button type="button" data-command="formatBlock" data-value="P" title="Absatz">Absatz</button>
+                  <button type="button" data-command="removeFormat" title="Formatierung entfernen">Format reset</button>
+                  <button type="button" id="toggle-dlv-html-view" title="Zwischen HTML und visueller Ansicht wechseln">HTML-Ansicht</button>
+                </div>
+                <div id="dienstleistungsvertrag-editor" class="editor-content" contenteditable="true"></div>
+                <textarea id="dienstleistungsvertrag-html" class="editor-html-source"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn-small btn-cancel" type="button">Abbrechen</button>
+            <button class="btn-small btn-send" type="button" style="background-color: #f58060; color: white;">Zur Signatur senden</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      const editor = modal.querySelector('#dienstleistungsvertrag-editor');
+      const htmlSource = modal.querySelector('#dienstleistungsvertrag-html');
+      const toggleHtmlBtn = modal.querySelector('#toggle-dlv-html-view');
+      let isHtmlMode = false;
+      const cancelButtons = modal.querySelectorAll('.btn-cancel');
+      const sendButton = modal.querySelector('.btn-send');
+      const toolbarButtons = modal.querySelectorAll('.editor-toolbar button[data-command]');
+      
+      const getCurrentHtml = () => (isHtmlMode ? htmlSource.value : editor.innerHTML || '');
+      const setEditorHtml = (html) => {
+        editor.innerHTML = html || '';
+        htmlSource.value = html || '';
+      };
+      
+      setEditorHtml(htmlContent || '');
+      
+      editor.addEventListener('input', () => {
+        if (!isHtmlMode) {
+          htmlSource.value = editor.innerHTML;
+        }
+      });
+      
+      editor.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertText', false, text);
+      });
+      
+      toolbarButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (isHtmlMode) return;
+          const command = btn.dataset.command;
+          const value = btn.dataset.value || null;
+          if (!command) return;
+          editor.focus();
+          document.execCommand(command, false, value);
+          htmlSource.value = editor.innerHTML;
+        });
+      });
+      
+      if (toggleHtmlBtn) {
+        toggleHtmlBtn.addEventListener('click', () => {
+          if (!isHtmlMode) {
+            htmlSource.value = editor.innerHTML;
+            htmlSource.style.display = 'block';
+            editor.style.display = 'none';
+            toggleHtmlBtn.textContent = 'Visuelle Ansicht';
+            isHtmlMode = true;
+          } else {
+            setEditorHtml(htmlSource.value);
+            htmlSource.style.display = 'none';
+            editor.style.display = 'block';
+            toggleHtmlBtn.textContent = 'HTML-Ansicht';
+            isHtmlMode = false;
+            editor.focus();
+          }
+        });
+      }
+      
+      setTimeout(() => editor.focus(), 100);
+      
+      const closeModal = () => modal.remove();
+      cancelButtons.forEach(btn => btn.addEventListener('click', closeModal));
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+      
+      sendButton.addEventListener('click', async () => {
+        try {
+          sendButton.disabled = true;
+          sendButton.textContent = 'Sende...';
+          const res = await fetch(`/api/dienstleistungsvertraege/${contractId}/send-for-signature`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html_content: getCurrentHtml() })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || 'Versand fehlgeschlagen');
+          }
+          alert('✅ Dienstleistungsvertrag erfolgreich zur Signatur gesendet');
+          closeModal();
+          const activeCustomer = window.currentCustomer;
+          if (activeCustomer && activeCustomer.id) {
+            await loadContractsForCustomer(activeCustomer.id);
+          } else {
+            const customerProfile = document.getElementById('customer-profile');
+            const contractsList = document.getElementById('contracts-list');
+            const fallbackId = customerProfile?.dataset.customerId || contractsList?.dataset?.customerId;
+            if (fallbackId) {
+              await loadContractsForCustomer(parseInt(fallbackId));
+            }
+          }
+        } catch (e) {
+          alert('❌ Fehler beim Senden: ' + e.message);
+        } finally {
+          sendButton.disabled = false;
+          sendButton.textContent = 'Zur Signatur senden';
+        }
+      });
     }
     
     async function checkKooperationsvertragStatus(contractId) {
@@ -3825,11 +5005,9 @@
         if (data.success) {
           alert(`✅ Status aktualisiert!\n\nNeuer Status: ${data.status}\n\n${data.message}`);
           
-          // Liste aktualisieren
-          const partnerProfile = document.getElementById('partner-profile');
-          const partnerId = modal.dataset.partnerId;
-          if (partnerId) {
-            await loadPartnerKooperationsvertraege(partnerId);
+          const refreshedPartnerId = currentPartner && currentPartner.id;
+          if (refreshedPartnerId) {
+            await loadPartnerKooperationsvertraege(refreshedPartnerId);
           }
         } else {
           throw new Error(data.error || 'Unbekannter Fehler');

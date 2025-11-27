@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, redirect, session, jsonify, url_for, send_file
+from flask_compress import Compress
 from flask_cors import CORS
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import Flow
 import os
@@ -12,7 +14,7 @@ import requests
 # DocuSign imports (vereinfacht - nur für Typen)
 # from docusign_esign import ApiClient, EnvelopesApi, EnvelopeDefinition, Document, Signer, SignHere, Tabs, Recipients
 import uuid
-from models import db, User, Anfrage, TeamNote, GmailCredential, PdfDocument, Customer, Kooperationspartner, Caregiver, Dienstleistungsvertrag, Kooperationsvertrag
+from models import db, User, Anfrage, TeamNote, GmailCredential, ExchangeCredential, PdfDocument, Customer, Kooperationspartner, Caregiver, Dienstleistungsvertrag, Kooperationsvertrag
 from werkzeug.middleware.proxy_fix import ProxyFix
 from base64 import urlsafe_b64encode
 import base64
@@ -23,6 +25,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+import smtplib
+import imaplib
+import email
+import socket
+from email.header import decode_header
 
 # 🔃 .env laden (lokal)
 load_dotenv()
@@ -40,6 +47,9 @@ def format_currency(value):
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback")
+# Template-Caching aktivieren für bessere Performance
+app.config['TEMPLATES_AUTO_RELOAD'] = False
+app.jinja_env.cache = {}
 
 # 📦 Persistente Ablage – Basisverzeichnis (standard: ./data)
 APP_DATA_DIR = os.getenv('APP_DATA_DIR') or os.path.join(os.getcwd(), 'data')
@@ -61,6 +71,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 CORS(app)
+Compress(app)
 
 db.init_app(app)
 
@@ -84,12 +95,40 @@ with app.app_context():
             if 'signature_data' not in koop_cols:
                 conn.execute(text("ALTER TABLE kooperationsvertraege ADD COLUMN signature_data TEXT"))
                 conn.commit()
+            if 'custom_html' not in koop_cols:
+                conn.execute(text("ALTER TABLE kooperationsvertraege ADD COLUMN custom_html TEXT"))
+                conn.commit()
             
             insp = conn.execute(text("PRAGMA table_info(dienstleistungsvertraege)")).fetchall()
             dlv_cols = [row[1] for row in insp]
             if 'signature_data' not in dlv_cols:
                 conn.execute(text("ALTER TABLE dienstleistungsvertraege ADD COLUMN signature_data TEXT"))
                 conn.commit()
+            if 'custom_html' not in dlv_cols:
+                conn.execute(text("ALTER TABLE dienstleistungsvertraege ADD COLUMN custom_html TEXT"))
+                conn.commit()
+            
+            # Migration für ExchangeCredential: signature-Feld hinzufügen
+            try:
+                insp = conn.execute(text("PRAGMA table_info(exchange_credentials)")).fetchall()
+                exc_cols = [row[1] for row in insp]
+                if 'signature' not in exc_cols:
+                    conn.execute(text("ALTER TABLE exchange_credentials ADD COLUMN signature TEXT"))
+                    conn.commit()
+                    print("✅ Migration: signature-Feld zu exchange_credentials hinzugefügt")
+            except Exception as e:
+                print(f"⚠️ Migration-Fehler für exchange_credentials.signature: {e}")
+
+            # Migration für Kooperationspartner: notes-Feld hinzufügen
+            try:
+                insp = conn.execute(text("PRAGMA table_info(kooperationspartner)")).fetchall()
+                partner_cols = [row[1] for row in insp]
+                if 'notes' not in partner_cols:
+                    conn.execute(text("ALTER TABLE kooperationspartner ADD COLUMN notes TEXT"))
+                    conn.commit()
+                    print("✅ Migration: notes-Feld zu kooperationspartner hinzugefügt")
+            except Exception as e:
+                print(f"⚠️ Migration-Fehler für kooperationspartner.notes: {e}")
     except Exception as e:
         print(f"Migration-Fehler: {e}")
         pass
@@ -120,6 +159,37 @@ with app.app_context():
                 conn.execute(text("ALTER TABLE customers ADD COLUMN monthly_rate FLOAT"))
             if 'daily_rate' not in cols:
                 conn.execute(text("ALTER TABLE customers ADD COLUMN daily_rate FLOAT"))
+            if 'mobile_phone' not in cols:
+                conn.execute(text("ALTER TABLE customers ADD COLUMN mobile_phone VARCHAR(64)"))
+                conn.commit()
+                print("✅ Migration: mobile_phone-Feld zu customers hinzugefügt")
+            
+            # Indizes für Performance hinzufügen (falls nicht vorhanden)
+            try:
+                # Customer Indizes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_customers_last_contact ON customers(last_contact)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status)"))
+                
+                # Dienstleistungsvertrag Indizes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_dlv_customer_id ON dienstleistungsvertraege(customer_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_dlv_partner_id ON dienstleistungsvertraege(kooperationspartner_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_dlv_created_at ON dienstleistungsvertraege(created_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_dlv_status ON dienstleistungsvertraege(status)"))
+                
+                # Kooperationsvertrag Indizes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kv_sender_id ON kooperationsvertraege(sender_partner_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kv_receiver_id ON kooperationsvertraege(receiver_partner_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kv_created_at ON kooperationsvertraege(created_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kv_status ON kooperationsvertraege(status)"))
+                
+                conn.commit()
+            except Exception as idx_e:
+                print(f"Index-Erstellung Fehler (kann ignoriert werden, wenn bereits vorhanden): {idx_e}")
+                pass
+            # Neuer Kundenstatus
+            if 'status' not in cols:
+                conn.execute(text("ALTER TABLE customers ADD COLUMN status VARCHAR(50)"))
             
             # Kooperationspartner-Tabelle erstellen falls nicht vorhanden
             result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='kooperationspartner'"))
@@ -364,6 +434,190 @@ def gmail_callback():
     session.pop('oauth_code_verifier', None)
     return redirect('/dashboard')
 
+# 📬 Exchange/Outlook IMAP-Verbindung (für IONOS Exchange)
+@app.route('/api/exchange/connect', methods=['POST'])
+def exchange_connect_imap():
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    data = request.get_json() or {}
+    email_addr = data.get('email', '').strip()
+    password = data.get('password', '').strip()
+    imap_server = data.get('imap_server', 'exchange.ionos.eu').strip()
+    imap_port = int(data.get('imap_port', 993))
+    imap_use_ssl = data.get('imap_use_ssl', True)
+    
+    if not email_addr or not password:
+        return jsonify({"error": "E-Mail-Adresse und Passwort erforderlich"}), 400
+    
+    # Teste IMAP-Verbindung
+    try:
+        # Timeout für Verbindung setzen
+        socket.setdefaulttimeout(10)  # 10 Sekunden Timeout
+        
+        if imap_use_ssl:
+            mail = imaplib.IMAP4_SSL(imap_server, imap_port, timeout=10)
+        else:
+            mail = imaplib.IMAP4(imap_server, imap_port, timeout=10)
+        
+        mail.login(email_addr, password)
+        mail.select('INBOX')
+        mail.logout()
+        
+        # Verbindung erfolgreich - speichern
+        # Passwort verschlüsselt in token_json speichern (Base64 für einfache Verschlüsselung)
+        # In Produktion sollte man eine bessere Verschlüsselung verwenden (z.B. Fernet)
+        password_encrypted = base64.b64encode(password.encode()).decode()
+        token_json = json.dumps({"password": password_encrypted, "method": "imap"})
+        
+        entry = ExchangeCredential(
+            username=session.get('user'),
+            email=email_addr,
+            imap_server=imap_server,
+            imap_port=imap_port,
+            imap_use_ssl=imap_use_ssl,
+            password=None,  # Nicht mehr im password-Feld speichern
+            token_json=token_json
+        )
+        db.session.add(entry)
+        db.session.commit()
+        
+        return jsonify({"success": True, "message": "Exchange-Konto erfolgreich verbunden"})
+    except (socket.gaierror, OSError) as e:
+        error_msg = str(e)
+        if 'Name or service not known' in error_msg or '[Errno -2]' in error_msg or 'nodename nor servname provided' in error_msg:
+            return jsonify({
+                "error": f"DNS-Fehler: Server '{imap_server}' konnte nicht gefunden werden. Bitte überprüfen Sie den IMAP-Server-Namen.\n\nFür IONOS Exchange sollte der Server sein: exchange.ionos.eu\n\nBitte prüfen Sie auch Ihre IONOS Exchange Administration Tool Einstellungen."
+            }), 400
+        return jsonify({"error": f"Netzwerk-Fehler: {error_msg}"}), 400
+    except socket.timeout as e:
+        return jsonify({"error": f"Verbindungs-Timeout: Server '{imap_server}' antwortet nicht innerhalb von 10 Sekunden. Bitte überprüfen Sie Server und Port."}), 400
+    except imaplib.IMAP4.error as e:
+        error_msg = str(e)
+        if isinstance(error_msg, bytes):
+            error_msg = error_msg.decode('utf-8', errors='ignore')
+        if 'AUTHENTICATE failed' in error_msg or 'LOGIN failed' in error_msg or 'authentication failed' in error_msg.lower():
+            return jsonify({
+                "error": f"Authentifizierung fehlgeschlagen für {email_addr}.\n\nMögliche Ursachen:\n1. Falsches Passwort - Bitte überprüfen Sie das Passwort\n2. 2FA aktiviert - Erstellen Sie ein App-Passwort in IONOS\n3. IMAP nicht aktiviert - Prüfen Sie die IONOS Exchange-Einstellungen\n4. Sonderzeichen im Passwort - Versuchen Sie es ohne Sonderzeichen oder mit App-Passwort\n\nTipp: Falls Sie 2-Faktor-Authentifizierung aktiviert haben, müssen Sie in IONOS ein App-Passwort erstellen und dieses verwenden."
+            }), 400
+        return jsonify({"error": f"IMAP-Fehler: {error_msg}"}), 400
+    except Exception as e:
+        error_msg = str(e)
+        if 'Name or service not known' in error_msg or '[Errno -2]' in error_msg:
+            return jsonify({
+                "error": f"Server '{imap_server}' konnte nicht gefunden werden. Bitte überprüfen Sie den IMAP-Server-Namen.\n\nFür IONOS Exchange sollte der Server sein: exchange.ionos.eu"
+            }), 400
+        return jsonify({"error": f"Fehler beim Verbinden: {error_msg}"}), 500
+
+# 📬 Microsoft Exchange/Outlook OAuth start (Fallback für Microsoft 365)
+@app.route('/exchange/connect')
+def exchange_connect():
+    if "user" not in session:
+        return redirect("/")
+    try:
+        from requests_oauthlib import OAuth2Session
+        import secrets
+        
+        # Microsoft OAuth-Konfiguration
+        client_id = os.getenv('MICROSOFT_CLIENT_ID')
+        client_secret = os.getenv('MICROSOFT_CLIENT_SECRET')
+        redirect_uri = url_for('exchange_callback', _external=True)
+        
+        if not client_id or not client_secret:
+            return "Microsoft OAuth ist nicht konfiguriert. Bitte setze MICROSOFT_CLIENT_ID und MICROSOFT_CLIENT_SECRET in .env", 400
+        
+        # Microsoft Graph API Scopes
+        scopes = [
+            'https://graph.microsoft.com/Mail.Read',
+            'https://graph.microsoft.com/Mail.Send',
+            'https://graph.microsoft.com/User.Read'
+        ]
+        
+        # OAuth2Session erstellen
+        oauth = OAuth2Session(
+            client_id,
+            redirect_uri=redirect_uri,
+            scope=scopes
+        )
+        
+        # Authorization URL generieren
+        authorization_url, state = oauth.authorization_url(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+            access_type='offline',
+            prompt='consent'
+        )
+        
+        session['exchange_oauth_state'] = state
+        session['exchange_client_secret'] = client_secret
+        
+        return redirect(authorization_url)
+    except Exception as e:
+        return f"Microsoft OAuth Fehler: {str(e)}", 400
+
+# 📬 Microsoft Exchange/Outlook OAuth callback
+@app.route('/exchange/callback')
+def exchange_callback():
+    if "user" not in session:
+        return redirect("/")
+    
+    expected_state = session.get('exchange_oauth_state')
+    incoming_state = request.args.get('state')
+    client_secret = session.get('exchange_client_secret')
+    
+    if expected_state and incoming_state and expected_state != incoming_state:
+        return "Ungültiger OAuth-Status (state mismatch)", 400
+    
+    if not client_secret:
+        return "OAuth-Session abgelaufen. Bitte erneut versuchen.", 400
+    
+    try:
+        from requests_oauthlib import OAuth2Session
+        
+        client_id = os.getenv('MICROSOFT_CLIENT_ID')
+        redirect_uri = url_for('exchange_callback', _external=True)
+        
+        oauth = OAuth2Session(
+            client_id,
+            redirect_uri=redirect_uri,
+            state=expected_state
+        )
+        
+        # Token abrufen
+        token_url = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+        token = oauth.fetch_token(
+            token_url,
+            authorization_response=request.url,
+            client_secret=client_secret
+        )
+        
+        # Token in Datenbank speichern
+        token_json = json.dumps(token)
+        
+        # E-Mail-Adresse abrufen
+        email = None
+        try:
+            headers = {'Authorization': f"Bearer {token['access_token']}"}
+            profile_response = requests.get('https://graph.microsoft.com/v1.0/me', headers=headers)
+            if profile_response.ok:
+                profile_data = profile_response.json()
+                email = profile_data.get('mail') or profile_data.get('userPrincipalName')
+        except Exception:
+            pass
+        
+        entry = ExchangeCredential(
+            username=session.get('user'),
+            token_json=token_json,
+            email=email or "Microsoft 365 Konto"
+        )
+        db.session.add(entry)
+        db.session.commit()
+        
+        session.pop('exchange_oauth_state', None)
+        session.pop('exchange_client_secret', None)
+        return redirect('/dashboard')
+    except Exception as e:
+        return f"Microsoft OAuth Fehler: {str(e)}", 400
+
 # 📥 Anfrage empfangen (extern)
 @app.route("/api/externe-anfrage", methods=["POST"])
 def externe_anfrage():
@@ -590,54 +844,100 @@ def send_latest_befragungsbogen():
         'lastName': payload.get('lastName'),
     }
 
-    # Nutze die gleiche Implementierung wie /api/send-offer, ohne HTTP-Hop
-    request_ctx_backup = request
+    # Nutze die gleiche Implementierung wie /api/send-offer, aber mit SMTP
     try:
-        # Minimaler Inline-Aufruf der Logik aus send_offer
-        # (kopiert die Kernteile, um keine Request-Kontext-Probleme zu erzeugen)
-        creds = load_user_gmail_credentials(session['user'])
-        if not creds:
-            return jsonify({"error": "Kein Gmail-Konto verbunden."}), 400
-        service = build('gmail', 'v1', credentials=creds)
-
         subject = data.get('subject') or "Befragungsbogen"
         body = data.get('body') or (
             "Hallo,\n\n" 
             "anbei befindet sich der Befragungsbogen.\n\n"
             "Mit besten Grüßen"
         )
+        
+        # SMTP-Konfiguration aus Umgebungsvariablen
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+        smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+        smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+        smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+        
+        if not smtp_username or not smtp_password:
+            return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
+
+        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        signature = get_signature_for_email(smtp_username)
+        newline = '\n'
+        
+        # Prepare text and HTML bodies mit Signatur
+        body_text_final = body
+        body_html_final = body.replace(newline, '<br>')
+        
+        if signature:
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text_final = f"{body}{newline}{newline}{signature_text}"
+            # Für HTML: Signatur direkt anhängen
+            body_html_final = f"{body.replace(newline, '<br>')}<br><br>{signature}"
+        
         body_html_final = (
             "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            (body or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
+            body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
             "</div>"
         )
-        body_text_final = body
 
-        mixed_boundary = 'mixed_boundary'
-        alt_boundary = 'alt_boundary'
-        parts = []
-        parts.append(f"Content-Type: multipart/mixed; boundary={mixed_boundary}\r\n")
-        parts.append("MIME-Version: 1.0\r\n")
-        parts.append(f"to: {to_email}\r\n")
-        parts.append(f"subject: {subject}\r\n\r\n")
-        parts.append(f"--{mixed_boundary}\r\n")
-        parts.append(f"Content-Type: multipart/alternative; boundary={alt_boundary}\r\n\r\n")
-        parts.append(f"--{alt_boundary}\r\n")
-        parts.append("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
-        parts.append(body_text_final + "\r\n\r\n")
-        parts.append(f"--{alt_boundary}\r\n")
-        parts.append("Content-Type: text/html; charset=UTF-8\r\n\r\n")
-        parts.append(body_html_final + "\r\n\r\n")
-        parts.append(f"--{alt_boundary}--\r\n")
-        parts.append(f"--{mixed_boundary}\r\n")
-        parts.append(f"Content-Type: application/pdf; name={filename}\r\n")
-        parts.append("Content-Transfer-Encoding: base64\r\n")
-        parts.append(f"Content-Disposition: attachment; filename={filename}\r\n\r\n")
-        parts.append(pdf_b64 + "\r\n")
-        parts.append(f"--{mixed_boundary}--")
-        raw_message = ''.join(parts).encode('utf-8')
-        raw = urlsafe_b64encode(raw_message).decode('utf-8')
-        service.users().messages().send(userId='me', body={'raw': raw}).execute()
+        # E-Mail erstellen
+        message = MIMEMultipart('mixed')
+        message['Subject'] = subject
+        message['From'] = f"HelpCare <{smtp_username}>"
+        message['To'] = to_email
+
+        # Für Befragungsbogen: BCC an alle Kooperationspartner
+        partners = Kooperationspartner.query.all()
+        bcc_emails = [partner.email for partner in partners if partner.email]
+        if bcc_emails:
+            message['Bcc'] = ', '.join(bcc_emails)
+            print(f"DEBUG: Sende Befragungsbogen per BCC an: {bcc_emails}")
+
+        # Text und HTML Versionen
+        text_part = MIMEText(body_text_final, 'plain', 'utf-8')
+        html_part = MIMEText(body_html_final, 'html', 'utf-8')
+        
+        # Alternative part (text + HTML)
+        alternative = MIMEMultipart('alternative')
+        alternative.attach(text_part)
+        alternative.attach(html_part)
+        message.attach(alternative)
+        
+        # PDF-Anhang hinzufügen
+        if pdf_b64.startswith('data:application/pdf;base64,'):
+            pdf_b64 = pdf_b64.split(',', 1)[1]
+        
+        pdf_data = base64.b64decode(pdf_b64)
+        pdf_attachment = MIMEBase('application', 'pdf')
+        pdf_attachment.set_payload(pdf_data)
+        encoders.encode_base64(pdf_attachment)
+        pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
+        message.attach(pdf_attachment)
+
+        # SMTP-Verbindung aufbauen und E-Mail senden
+        if smtp_use_ssl:
+            # SSL-Verbindung (Port 465)
+            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        else:
+            # STARTTLS-Verbindung (Port 587)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        
+        print(f"✅ E-Mail erfolgreich über SMTP versendet an {to_email}")
         
         # Kunde automatisch speichern mit Befragungsbogen-Daten
         questionnaire_data = {
@@ -654,8 +954,35 @@ def send_latest_befragungsbogen():
         print(f"DEBUG: Kunde gespeichert: {customer}")
         
         return jsonify({"success": True})
+        
+    except smtplib.SMTPAuthenticationError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Authentifizierungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Authentifizierung fehlgeschlagen. Bitte SMTP-Credentials (Benutzername/Passwort) überprüfen. Server: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPConnectError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Verbindungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Verbindung fehlgeschlagen. Bitte SMTP-Server und Port überprüfen. Versucht: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPDataError as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore')
+        print(f"❌ SMTP-Datenfehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
+    except smtplib.SMTPException as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore') if hasattr(e, 'smtp_error') else error_str
+        print(f"❌ SMTP-Fehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Senden fehlgeschlagen: {str(e)}"}), 500
+        error_str = str(e)
+        print(f"❌ E-Mail-Versand Fehler: {error_str}")
+        return jsonify({"error": f"E-Mail-Versand fehlgeschlagen: {error_str}"}), 500
 
 # 🧾 Editor-Seite für Befragungsbogen (pdf.js)
 @app.route('/befragungsbogen/editor')
@@ -1088,50 +1415,105 @@ def send_befragungsbogen_filled():
     except Exception as e:
         return jsonify({"error": f"PDF-Befüllung fehlgeschlagen: {str(e)}"}), 500
 
-    # E-Mail senden (bestehende Logik wiederverwenden)
+    # E-Mail senden über SMTP
     try:
-        creds = load_user_gmail_credentials(session['user'])
-        if not creds:
-            return jsonify({"error": "Kein Gmail-Konto verbunden."}), 400
-        service = build('gmail', 'v1', credentials=creds)
         subject = payload.get('subject') or "Befragungsbogen"
         body = payload.get('body') or (
             "Hallo,\n\n" 
             "anbei befindet sich der Befragungsbogen.\n\n"
             "Mit besten Grüßen"
         )
-        # HTML/TXT
+        
+        # SMTP-Konfiguration aus Umgebungsvariablen
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+        smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+        smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+        smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+        
+        if not smtp_username or not smtp_password:
+            return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
+
+        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        signature = get_signature_for_email(smtp_username)
+        newline = '\n'
+        
+        # Prepare text and HTML bodies mit Signatur
+        body_text_final = body
+        body_html_final = body.replace(newline, '<br>')
+        
+        if signature:
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text_final = f"{body}{newline}{newline}{signature_text}"
+            # Für HTML: Signatur direkt anhängen
+            body_html_final = f"{body.replace(newline, '<br>')}<br><br>{signature}"
+        
         body_html_final = (
             "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            (body or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
+            body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
             "</div>"
         )
-        body_text_final = body
-        mixed_boundary = 'mixed_boundary'
-        alt_boundary = 'alt_boundary'
-        parts = []
-        parts.append(f"Content-Type: multipart/mixed; boundary={mixed_boundary}\r\n")
-        parts.append("MIME-Version: 1.0\r\n")
-        parts.append(f"to: {to_email}\r\n")
-        parts.append(f"subject: {subject}\r\n\r\n")
-        parts.append(f"--{mixed_boundary}\r\n")
-        parts.append(f"Content-Type: multipart/alternative; boundary={alt_boundary}\r\n\r\n")
-        parts.append(f"--{alt_boundary}\r\n")
-        parts.append("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
-        parts.append(body_text_final + "\r\n\r\n")
-        parts.append(f"--{alt_boundary}\r\n")
-        parts.append("Content-Type: text/html; charset=UTF-8\r\n\r\n")
-        parts.append(body_html_final + "\r\n\r\n")
-        parts.append(f"--{alt_boundary}--\r\n")
-        parts.append(f"--{mixed_boundary}\r\n")
-        parts.append(f"Content-Type: application/pdf; name={filename}\r\n")
-        parts.append("Content-Transfer-Encoding: base64\r\n")
-        parts.append(f"Content-Disposition: attachment; filename={filename}\r\n\r\n")
-        parts.append(pdf_b64 + "\r\n")
-        parts.append(f"--{mixed_boundary}--")
-        raw_message = ''.join(parts).encode('utf-8')
-        raw = urlsafe_b64encode(raw_message).decode('utf-8')
-        service.users().messages().send(userId='me', body={'raw': raw}).execute()
+
+        # E-Mail erstellen
+        message = MIMEMultipart('mixed')
+        message['Subject'] = subject
+        message['From'] = f"HelpCare <{smtp_username}>"
+        message['To'] = to_email
+
+        # Für Befragungsbogen: BCC an ausgewählte Kooperationspartner
+        # Prüfe ob Partner explizit übergeben wurden
+        partners_data = payload.get('partners', [])
+        if partners_data:
+            # Verwende übergebene Partner
+            bcc_emails = [partner.get('email') for partner in partners_data if partner.get('email')]
+        else:
+            # Fallback: Alle Partner (für Rückwärtskompatibilität)
+            partners = Kooperationspartner.query.all()
+            bcc_emails = [partner.email for partner in partners if partner.email]
+        
+        if bcc_emails:
+            message['Bcc'] = ', '.join(bcc_emails)
+            print(f"DEBUG: Sende Befragungsbogen per BCC an: {bcc_emails}")
+
+        # Text und HTML Versionen
+        text_part = MIMEText(body_text_final, 'plain', 'utf-8')
+        html_part = MIMEText(body_html_final, 'html', 'utf-8')
+        
+        # Alternative part (text + HTML)
+        alternative = MIMEMultipart('alternative')
+        alternative.attach(text_part)
+        alternative.attach(html_part)
+        message.attach(alternative)
+        
+        # PDF-Anhang hinzufügen
+        pdf_data = base64.b64decode(pdf_b64)
+        pdf_attachment = MIMEBase('application', 'pdf')
+        pdf_attachment.set_payload(pdf_data)
+        encoders.encode_base64(pdf_attachment)
+        pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
+        message.attach(pdf_attachment)
+
+        # SMTP-Verbindung aufbauen und E-Mail senden
+        if smtp_use_ssl:
+            # SSL-Verbindung (Port 465)
+            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        else:
+            # STARTTLS-Verbindung (Port 587)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        
+        print(f"✅ E-Mail erfolgreich über SMTP versendet an {to_email}")
         
         # Kunde automatisch speichern mit Befragungsbogen-Daten (inkl. ausgefüllte Felder)
         questionnaire_data = {
@@ -1144,69 +1526,273 @@ def send_befragungsbogen_filled():
         save_customer_from_email(to_email, questionnaire_data=questionnaire_data)
         
         return jsonify({"success": True})
+        
+    except smtplib.SMTPAuthenticationError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Authentifizierungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Authentifizierung fehlgeschlagen. Bitte SMTP-Credentials (Benutzername/Passwort) überprüfen. Server: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPConnectError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Verbindungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Verbindung fehlgeschlagen. Bitte SMTP-Server und Port überprüfen. Versucht: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPDataError as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore')
+        print(f"❌ SMTP-Datenfehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
+    except smtplib.SMTPException as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore') if hasattr(e, 'smtp_error') else error_str
+        print(f"❌ SMTP-Fehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Senden fehlgeschlagen: {str(e)}"}), 500
+        error_str = str(e)
+        print(f"❌ E-Mail-Versand Fehler: {error_str}")
+        return jsonify({"error": f"E-Mail-Versand fehlgeschlagen: {error_str}"}), 500
 
-# 📧 Gmail API
+# 📧 E-Mail API (Gmail und Exchange)
 @app.route("/api/emails")
 def get_emails():
     if "user" not in session:
         return jsonify({"error": "Nicht eingeloggt"}), 401
-    # Backward-compat: support either cred_id (preferred) or 1..3 slot index
+    
     cred_id_param = request.args.get('cred_id')
+    account_type = request.args.get('type', 'gmail')  # 'gmail' oder 'exchange'
     slot_param = request.args.get('slot')
 
     try:
-        cred_row = None
-        if cred_id_param:
-            try:
-                cred_id_int = int(cred_id_param)
-            except Exception:
-                return jsonify({"error": "Ungültige cred_id"}), 400
-            cred_row = GmailCredential.query.filter_by(id=cred_id_int, username=session['user']).first()
-        if not cred_row:
-            # Fallback auf Slots 1..3
-            slot_index = 1
-            if slot_param is not None:
+        if account_type == 'exchange':
+            # Exchange/Outlook über IMAP oder Microsoft Graph API
+            cred_row = None
+            if cred_id_param:
                 try:
-                    slot_index = int(slot_param)
+                    cred_id_int = int(cred_id_param)
+                    cred_row = ExchangeCredential.query.filter_by(id=cred_id_int, username=session['user']).first()
                 except Exception:
-                    slot_index = 1
-            slot_index = max(1, min(3, slot_index))
-            cred_row = (
-                GmailCredential.query
-                .filter_by(username=session['user'])
-                .order_by(GmailCredential.id.desc())
-                .offset(slot_index - 1)
-                .first()
-            )
-        if not cred_row:
-            return jsonify({"error": "Kein Gmail-Konto verbunden. Bitte Postfach hinzufügen."}), 400
-        token_data = json.loads(cred_row.token_json)
-        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-        service = build('gmail', 'v1', credentials=creds)
-        results = service.users().messages().list(userId='me', maxResults=10).execute()
-        messages = results.get('messages', [])
+                    return jsonify({"error": "Ungültige cred_id"}), 400
+            else:
+                # Neuestes Exchange-Konto
+                cred_row = (
+                    ExchangeCredential.query
+                    .filter_by(username=session['user'])
+                    .order_by(ExchangeCredential.id.desc())
+                    .first()
+                )
+            
+            if not cred_row:
+                return jsonify({"error": "Kein Exchange-Konto verbunden. Bitte Postfach hinzufügen."}), 400
+            
+            # Prüfe ob IMAP oder OAuth verwendet wird
+            if cred_row.imap_server and cred_row.token_json:
+                try:
+                    token_data = json.loads(cred_row.token_json)
+                    if token_data.get('method') == 'imap':
+                        # IMAP-Verbindung (IONOS Exchange)
+                        password_encrypted = token_data.get('password')
+                        if not password_encrypted:
+                            return jsonify({"error": "Passwort nicht verfügbar. Bitte Postfach erneut verbinden."}), 400
+                        password = base64.b64decode(password_encrypted.encode()).decode()
+                    else:
+                        # OAuth-Token vorhanden, aber kein IMAP
+                        raise ValueError("Kein IMAP-Passwort")
+                except:
+                    return jsonify({"error": "Passwort nicht verfügbar. Bitte Postfach erneut verbinden."}), 400
+                
+                try:
+                    # IMAP-Verbindung
+                    if cred_row.imap_use_ssl:
+                        mail = imaplib.IMAP4_SSL(cred_row.imap_server, cred_row.imap_port)
+                    else:
+                        mail = imaplib.IMAP4(cred_row.imap_server, cred_row.imap_port)
+                    
+                    mail.login(cred_row.email, password)
+                    mail.select('INBOX')
+                    
+                    # Suche nach ungelesenen E-Mails, dann neueste
+                    typ, message_ids = mail.search(None, 'ALL')
+                    if typ != 'OK':
+                        mail.logout()
+                        return jsonify({"error": "Fehler beim Abrufen der E-Mails"}), 500
+                    
+                    message_ids = message_ids[0].split()
+                    # Neueste 10 E-Mails
+                    message_ids = message_ids[-10:] if len(message_ids) > 10 else message_ids
+                    message_ids.reverse()  # Neueste zuerst
+                    
+                    email_list = []
+                    for msg_id in message_ids:
+                        typ, msg_data = mail.fetch(msg_id, '(RFC822)')
+                        if typ != 'OK':
+                            continue
+                        
+                        msg = email.message_from_bytes(msg_data[0][1])
+                        
+                        # Header dekodieren
+                        def decode_mime_words(s):
+                            if not s:
+                                return ''
+                            decoded = decode_header(s)
+                            return ''.join([str(t[0], t[1] or 'utf-8') if isinstance(t[0], bytes) else t[0] for t in decoded])
+                        
+                        from_addr = decode_mime_words(msg.get('From', 'Unbekannt'))
+                        subject = decode_mime_words(msg.get('Subject', '(Kein Betreff)'))
+                        
+                        # Datum
+                        date_tuple = email.utils.parsedate_tz(msg.get('Date', ''))
+                        if date_tuple:
+                            dt = datetime.datetime.fromtimestamp(email.utils.mktime_tz(date_tuple))
+                            time_str = dt.strftime('%d.%m.%Y – %H:%M')
+                        else:
+                            time_str = 'Unbekannt'
+                        
+                        # Snippet (erste Zeilen des Textes)
+                        snippet = ''
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == 'text/plain':
+                                    try:
+                                        body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                        snippet = body[:200].replace('\n', ' ').strip()
+                                    except:
+                                        pass
+                                    break
+                        else:
+                            try:
+                                body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                snippet = body[:200].replace('\n', ' ').strip()
+                            except:
+                                pass
+                        
+                        # Prüfe ob ungelesen
+                        flags = mail.fetch(msg_id, '(FLAGS)')[1][0].decode()
+                        is_unread = '\\Seen' not in flags
+                        
+                        email_list.append({
+                            "from": from_addr,
+                            "subject": subject,
+                            "time": time_str,
+                            "snippet": snippet,
+                            "unread": is_unread,
+                            "id": msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id),
+                            "threadId": None,
+                        })
+                    
+                    mail.logout()
+                    return jsonify(email_list)
+                except imaplib.IMAP4.error as e:
+                    return jsonify({"error": f"IMAP-Fehler: {str(e)}"}), 500
+                except Exception as e:
+                    return jsonify({"error": f"Fehler beim Abrufen der E-Mails: {str(e)}"}), 500
+            elif cred_row.token_json:
+                # Microsoft Graph API (OAuth)
+                token_data = json.loads(cred_row.token_json)
+                access_token = token_data.get('access_token')
+                
+                if not access_token:
+                    return jsonify({"error": "Ungültiger Token. Bitte Postfach erneut verbinden."}), 400
+                
+                # Microsoft Graph API aufrufen
+                headers = {'Authorization': f'Bearer {access_token}'}
+                graph_url = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages'
+                params = {'$top': 10, '$orderby': 'receivedDateTime desc'}
+                
+                response = requests.get(graph_url, headers=headers, params=params)
+                if not response.ok:
+                    if response.status_code == 401:
+                        return jsonify({"error": "Token abgelaufen. Bitte Postfach erneut verbinden."}), 401
+                    return jsonify({"error": f"Fehler bei Microsoft Graph API: {response.text}"}), 500
+                
+                graph_data = response.json()
+                messages = graph_data.get('value', [])
+                
+                email_list = []
+                for msg in messages:
+                    from_addr = msg.get('from', {}).get('emailAddress', {}).get('address', 'Unbekannt')
+                    from_name = msg.get('from', {}).get('emailAddress', {}).get('name', '')
+                    from_display = f"{from_name} <{from_addr}>" if from_name else from_addr
+                    
+                    received = msg.get('receivedDateTime', '')
+                    if received:
+                        try:
+                            dt = datetime.datetime.fromisoformat(received.replace('Z', '+00:00'))
+                            time_str = dt.strftime('%d.%m.%Y – %H:%M')
+                        except:
+                            time_str = received[:10]
+                    else:
+                        time_str = 'Unbekannt'
+                    
+                    email_info = {
+                        "from": from_display,
+                        "subject": msg.get('subject', '(Kein Betreff)'),
+                        "time": time_str,
+                        "snippet": msg.get('bodyPreview', '') or msg.get('body', {}).get('content', '')[:200],
+                        "unread": not msg.get('isRead', False),
+                        "id": msg.get('id'),
+                        "threadId": msg.get('conversationId'),
+                    }
+                    email_list.append(email_info)
+                
+                return jsonify(email_list)
+            else:
+                return jsonify({"error": "Keine gültige Verbindungsmethode konfiguriert."}), 400
+        else:
+            # Gmail (bestehende Logik)
+            cred_row = None
+            if cred_id_param:
+                try:
+                    cred_id_int = int(cred_id_param)
+                    cred_row = GmailCredential.query.filter_by(id=cred_id_int, username=session['user']).first()
+                except Exception:
+                    return jsonify({"error": "Ungültige cred_id"}), 400
+            if not cred_row:
+                # Fallback auf Slots 1..3
+                slot_index = 1
+                if slot_param is not None:
+                    try:
+                        slot_index = int(slot_param)
+                    except Exception:
+                        slot_index = 1
+                slot_index = max(1, min(3, slot_index))
+                cred_row = (
+                    GmailCredential.query
+                    .filter_by(username=session['user'])
+                    .order_by(GmailCredential.id.desc())
+                    .offset(slot_index - 1)
+                    .first()
+                )
+            if not cred_row:
+                return jsonify({"error": "Kein Gmail-Konto verbunden. Bitte Postfach hinzufügen."}), 400
+            token_data = json.loads(cred_row.token_json)
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            service = build('gmail', 'v1', credentials=creds)
+            results = service.users().messages().list(userId='me', maxResults=10).execute()
+            messages = results.get('messages', [])
+
+            email_list = []
+            for msg in messages:
+                msg_data = service.users().messages().get(userId='me', id=msg['id']).execute()
+                headers = msg_data['payload']['headers']
+                email_info = {
+                    "from": next((h['value'] for h in headers if h['name'] == 'From'), 'Unbekannt'),
+                    "subject": next((h['value'] for h in headers if h['name'] == 'Subject'), '(Kein Betreff)'),
+                    "time": datetime.datetime.fromtimestamp(
+                        int(msg_data['internalDate']) / 1000).strftime('%d.%m.%Y – %H:%M'),
+                    "snippet": msg_data.get('snippet', ''),
+                    "unread": 'UNREAD' in (msg_data.get('labelIds') or []),
+                    "id": msg_data.get('id'),
+                    "threadId": msg_data.get('threadId'),
+                }
+                email_list.append(email_info)
+
+            return jsonify(email_list)
     except Exception as e:
-        return jsonify({"error": f"Fehler bei Gmail API: {str(e)}"}), 500
-
-    email_list = []
-    for msg in messages:
-        msg_data = service.users().messages().get(userId='me', id=msg['id']).execute()
-        headers = msg_data['payload']['headers']
-        email_info = {
-            "from": next((h['value'] for h in headers if h['name'] == 'From'), 'Unbekannt'),
-            "subject": next((h['value'] for h in headers if h['name'] == 'Subject'), '(Kein Betreff)'),
-            "time": datetime.datetime.fromtimestamp(
-                int(msg_data['internalDate']) / 1000).strftime('%d.%m.%Y – %H:%M'),
-            "snippet": msg_data.get('snippet', ''),
-            "unread": 'UNREAD' in (msg_data.get('labelIds') or []),
-            "id": msg_data.get('id'),
-            "threadId": msg_data.get('threadId'),
-        }
-        email_list.append(email_info)
-
-    return jsonify(email_list)
+        return jsonify({"error": f"Fehler bei E-Mail API: {str(e)}"}), 500
 
 # 📧 Ungelesene Nachrichten zählen (pro Slot oder cred_id)
 @app.route('/api/emails/unread_count')
@@ -1214,40 +1800,109 @@ def unread_count():
     if "user" not in session:
         return jsonify({"error": "Nicht eingeloggt"}), 401
     cred_id_param = request.args.get('cred_id')
+    account_type = request.args.get('type', 'gmail')
     slot_param = request.args.get('slot')
 
     try:
-        cred_row = None
-        if cred_id_param:
-            try:
-                cred_id_int = int(cred_id_param)
-            except Exception:
-                cred_id_int = None
-            if cred_id_int:
-                cred_row = GmailCredential.query.filter_by(id=cred_id_int, username=session['user']).first()
-        if not cred_row:
-            slot_index = 1
-            if slot_param is not None:
+        if account_type == 'exchange':
+            cred_row = None
+            if cred_id_param:
                 try:
-                    slot_index = int(slot_param)
+                    cred_id_int = int(cred_id_param)
+                    cred_row = ExchangeCredential.query.filter_by(id=cred_id_int, username=session['user']).first()
                 except Exception:
-                    slot_index = 1
-            slot_index = max(1, min(3, slot_index))
-            cred_row = (
-                GmailCredential.query
-                .filter_by(username=session['user'])
-                .order_by(GmailCredential.id.desc())
-                .offset(slot_index - 1)
-                .first()
-            )
-        if not cred_row:
-            return jsonify({"count": 0, "connected": False})
-        token_data = json.loads(cred_row.token_json)
-        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-        service = build('gmail', 'v1', credentials=creds)
-        results = service.users().messages().list(userId='me', q='is:unread', maxResults=1).execute() or {}
-        count = results.get('resultSizeEstimate', 0)
-        return jsonify({"count": int(count), "connected": True})
+                    pass
+            if not cred_row:
+                cred_row = (
+                    ExchangeCredential.query
+                    .filter_by(username=session['user'])
+                    .order_by(ExchangeCredential.id.desc())
+                    .first()
+                )
+            if not cred_row:
+                return jsonify({"count": 0, "connected": False})
+            
+            # Prüfe ob IMAP oder OAuth
+            if cred_row.imap_server and cred_row.token_json:
+                try:
+                    token_data = json.loads(cred_row.token_json)
+                    if token_data.get('method') == 'imap':
+                        password_encrypted = token_data.get('password')
+                        if not password_encrypted:
+                            return jsonify({"count": 0, "connected": False})
+                        password = base64.b64decode(password_encrypted.encode()).decode()
+                        
+                        # IMAP-Verbindung
+                        if cred_row.imap_use_ssl:
+                            mail = imaplib.IMAP4_SSL(cred_row.imap_server, cred_row.imap_port)
+                        else:
+                            mail = imaplib.IMAP4(cred_row.imap_server, cred_row.imap_port)
+                        
+                        mail.login(cred_row.email, password)
+                        mail.select('INBOX')
+                        
+                        # Ungelesene E-Mails zählen
+                        typ, message_ids = mail.search(None, 'UNSEEN')
+                        if typ == 'OK':
+                            count = len(message_ids[0].split()) if message_ids[0] else 0
+                        else:
+                            count = 0
+                        
+                        mail.logout()
+                        return jsonify({"count": int(count), "connected": True})
+                except Exception:
+                    return jsonify({"count": 0, "connected": False})
+            elif cred_row.token_json:
+                # OAuth (Microsoft Graph API)
+                token_data = json.loads(cred_row.token_json)
+                access_token = token_data.get('access_token')
+                if not access_token:
+                    return jsonify({"count": 0, "connected": False})
+                
+                headers = {'Authorization': f'Bearer {access_token}'}
+                graph_url = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages'
+                params = {'$filter': 'isRead eq false', '$count': 'true', '$top': 1}
+                response = requests.get(graph_url, headers=headers, params=params)
+                if response.ok:
+                    data = response.json()
+                    count = data.get('@odata.count', len(data.get('value', [])))
+                    return jsonify({"count": int(count), "connected": True})
+                return jsonify({"count": 0, "connected": False})
+            else:
+                return jsonify({"count": 0, "connected": False})
+        else:
+            # Gmail (bestehende Logik)
+            cred_row = None
+            if cred_id_param:
+                try:
+                    cred_id_int = int(cred_id_param)
+                except Exception:
+                    cred_id_int = None
+                if cred_id_int:
+                    cred_row = GmailCredential.query.filter_by(id=cred_id_int, username=session['user']).first()
+            if not cred_row:
+                slot_index = 1
+                if slot_param is not None:
+                    try:
+                        slot_index = int(slot_param)
+                    except Exception:
+                        slot_index = 1
+                slot_index = max(1, min(3, slot_index))
+                cred_row = (
+                    GmailCredential.query
+                    .filter_by(username=session['user'])
+                    .order_by(GmailCredential.id.desc())
+                    .offset(slot_index - 1)
+                    .first()
+                )
+            if not cred_row:
+                return jsonify({"count": 0, "connected": False})
+            token_data = json.loads(cred_row.token_json)
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            service = build('gmail', 'v1', credentials=creds)
+            results = service.users().messages().list(userId='me', q='is:unread', maxResults=1).execute() or {}
+            count = results.get('resultSizeEstimate', 0)
+            return jsonify({"count": int(count), "connected": True})
     except Exception:
         return jsonify({"count": 0, "connected": False})
 
@@ -1302,10 +1957,444 @@ def gmail_accounts():
                 "cred_id": r.id,
                 "email": email_addr or "Verbundenes Konto",
                 "unread": unread_est,
+                "type": "gmail",
             })
         except Exception:
             continue
     return jsonify(accounts)
+
+# 📧 Liste aller verbundenen Postfächer (Gmail + Exchange)
+@app.route('/api/mail/accounts')
+def mail_accounts():
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    accounts = []
+    
+    # Nur Exchange-Konten (Gmail wurde entfernt)
+    # Exchange-Konten
+    exchange_rows = (
+        ExchangeCredential.query
+        .filter_by(username=session['user'])
+        .order_by(ExchangeCredential.id.desc())
+        .all()
+    )
+    for r in exchange_rows:
+        try:
+            email_addr = r.email or "Verbundenes Konto"
+            unread_est = 0
+            
+            # Prüfe ob IMAP oder OAuth
+            if r.imap_server and r.token_json:
+                try:
+                    token_data = json.loads(r.token_json)
+                    if token_data.get('method') == 'imap':
+                        # IMAP: Ungelesen zählen
+                        password_encrypted = token_data.get('password')
+                        if password_encrypted:
+                            password = base64.b64decode(password_encrypted.encode()).decode()
+                            if r.imap_use_ssl:
+                                mail = imaplib.IMAP4_SSL(r.imap_server, r.imap_port)
+                            else:
+                                mail = imaplib.IMAP4(r.imap_server, r.imap_port)
+                            mail.login(r.email, password)
+                            mail.select('INBOX')
+                            typ, message_ids = mail.search(None, 'UNSEEN')
+                            if typ == 'OK':
+                                unread_est = len(message_ids[0].split()) if message_ids[0] else 0
+                            mail.logout()
+                except Exception:
+                    pass
+            elif r.token_json:
+                # OAuth (Microsoft Graph API)
+                try:
+                    token_data = json.loads(r.token_json)
+                    access_token = token_data.get('access_token')
+                    if access_token:
+                        headers = {'Authorization': f'Bearer {access_token}'}
+                        graph_url = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages'
+                        params = {'$filter': 'isRead eq false', '$count': 'true', '$top': 1}
+                        response = requests.get(graph_url, headers=headers, params=params)
+                        if response.ok:
+                            data = response.json()
+                            unread_est = data.get('@odata.count', len(data.get('value', [])))
+                except Exception:
+                    pass
+            
+            accounts.append({
+                "cred_id": r.id,
+                "email": email_addr,
+                "unread": unread_est,
+                "type": "exchange",
+            })
+        except Exception:
+            continue
+    
+    return jsonify(accounts)
+
+# 📧 Vollständige E-Mail abrufen (für Antwort)
+@app.route('/api/emails/<email_id>')
+def get_email_detail():
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    cred_id_param = request.args.get('cred_id')
+    account_type = request.args.get('type', 'exchange')
+    
+    try:
+        if account_type == 'exchange':
+            cred_row = ExchangeCredential.query.filter_by(id=int(cred_id_param), username=session['user']).first()
+            if not cred_row or not cred_row.imap_server:
+                return jsonify({"error": "Konto nicht gefunden"}), 404
+            
+            token_data = json.loads(cred_row.token_json)
+            if token_data.get('method') != 'imap':
+                return jsonify({"error": "Nur IMAP wird unterstützt"}), 400
+            
+            password = base64.b64decode(token_data.get('password').encode()).decode()
+            
+            if cred_row.imap_use_ssl:
+                mail = imaplib.IMAP4_SSL(cred_row.imap_server, cred_row.imap_port)
+            else:
+                mail = imaplib.IMAP4(cred_row.imap_server, cred_row.imap_port)
+            
+            mail.login(cred_row.email, password)
+            mail.select('INBOX')
+            
+            # E-Mail abrufen
+            typ, msg_data = mail.fetch(email_id.encode() if isinstance(email_id, str) else str(email_id).encode(), '(RFC822)')
+            if typ != 'OK':
+                mail.logout()
+                return jsonify({"error": "E-Mail nicht gefunden"}), 404
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            def decode_mime_words(s):
+                if not s:
+                    return ''
+                decoded = decode_header(s)
+                return ''.join([str(t[0], t[1] or 'utf-8') if isinstance(t[0], bytes) else t[0] for t in decoded])
+            
+            # E-Mail-Adresse aus From extrahieren
+            from_header = decode_mime_words(msg.get('From', ''))
+            from_email = from_header
+            # Versuche E-Mail-Adresse zu extrahieren (z.B. "Name <email@domain.com>" -> "email@domain.com")
+            import re
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', from_header)
+            if email_match:
+                from_email = email_match.group(0)
+            
+            # Vollständiger Body
+            full_body = ''
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == 'text/plain':
+                        try:
+                            full_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        except:
+                            pass
+                        break
+            else:
+                try:
+                    full_body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                except:
+                    pass
+            
+            mail.logout()
+            
+            return jsonify({
+                "from": from_header,
+                "from_email": from_email,
+                "subject": decode_mime_words(msg.get('Subject', '(Kein Betreff)')),
+                "body": full_body,
+                "id": email_id
+            })
+        else:
+            return jsonify({"error": "Nur Exchange wird unterstützt"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Fehler: {str(e)}"}), 500
+
+# Hilfsfunktionen für Kooperationsverträge
+def _extract_address_parts(address: str):
+    if not address:
+        return '', '', ''
+    parts = [seg.strip() for seg in address.split(',')]
+    street = parts[0] if parts else ''
+    plz = ''
+    ort = ''
+    if len(parts) > 1:
+        city_parts = parts[1].split()
+        if city_parts:
+            plz = city_parts[0]
+            if len(city_parts) > 1:
+                ort = ' '.join(city_parts[1:])
+    return street, plz, ort
+
+def _render_kooperationsvertrag_html(contract, partner: Kooperationspartner):
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'kooperationsvertrag.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    
+    street, plz, ort = _extract_address_parts(partner.street_address or '')
+    replacements = {
+        '[Firmenname des Dienstleisters]': partner.company_name or partner.name or '',
+        '[Straße]': street,
+        '[PLZ]': plz,
+        '[Ort]': ort,
+        '[Land]': 'Deutschland',
+        '[Vertretungsberechtigte]': partner.managing_director or '',
+        '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
+        '[Provision]': (partner.provision or '').strip()
+    }
+    
+    for placeholder, value in replacements.items():
+        html_content = html_content.replace(placeholder, str(value))
+    return html_content
+
+def _generate_kooperationsvertrag_pdf_from_html(contract, html_content):
+    from weasyprint import HTML, CSS
+    from weasyprint.text.fonts import FontConfiguration
+    
+    font_config = FontConfiguration()
+    html_doc = HTML(string=html_content)
+    css = CSS(string='@page { size: A4; margin: 1.5cm; }', font_config=font_config)
+    
+    pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
+    
+    pdf_filename = f"kooperationsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
+    
+    with open(pdf_path, 'wb') as f:
+        f.write(pdf_bytes)
+    
+    contract.pdf_filename = pdf_filename
+    db.session.commit()
+    return pdf_filename, f"/uploads/{pdf_filename}"
+
+def _get_dienstleistungsvertrag_replacements(contract, customer: Customer, partner: Kooperationspartner):
+    if not customer or not partner:
+        raise ValueError("Kunde oder Kooperationspartner nicht gefunden")
+    return {
+        '[Auftragsnummer]': contract.contract_number,
+        '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
+        '[Vorname Name]': customer.name,
+        '[Straße Hausnummer]': customer.street_address or '',
+        '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
+        '[Telefon Kunde]': customer.phone or '',
+        '[E-Mail Kunde]': customer.email or '',
+        '[Firmenname Partner]': partner.company_name or partner.name or '',
+        '[Adresse Partner]': partner.street_address or '',
+        '[Telefon Partner]': partner.phone or '',
+        '[E-Mail Partner]': partner.email or '',
+        '[Identifikationsnummer Partner]': partner.identification_number or '',
+        '[Handelsregisternummer Partner]': partner.commercial_register or '',
+        '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
+        '[Name Geschäftsführer Partner]': partner.managing_director or '',
+        '[Notfalltelefon Partner]': partner.emergency_phone or '',
+        '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
+        '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
+        '[Ort]': customer.city or '',
+        '[Partnerfirma]': getattr(partner, 'partner_company', None) or partner.company_name or partner.name or ''
+    }
+
+def _render_dienstleistungsvertrag_html(contract, customer: Customer = None, partner: Kooperationspartner = None, *, ignore_custom=False):
+    if not ignore_custom and getattr(contract, 'custom_html', None):
+        return contract.custom_html
+    customer = customer or Customer.query.get(contract.customer_id)
+    partner = partner or Kooperationspartner.query.get(contract.kooperationspartner_id)
+    replacements = _get_dienstleistungsvertrag_replacements(contract, customer, partner)
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    for placeholder, value in replacements.items():
+        html_content = html_content.replace(placeholder, str(value))
+    return html_content
+
+def _generate_dienstleistungsvertrag_pdf_from_html(contract, html_content):
+    from weasyprint import HTML, CSS
+    from weasyprint.text.fonts import FontConfiguration
+    
+    font_config = FontConfiguration()
+    html_doc = HTML(string=html_content)
+    css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
+    
+    pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
+    pdf_filename = f"dienstleistungsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
+    
+    with open(pdf_path, 'wb') as f:
+        f.write(pdf_bytes)
+    
+    contract.pdf_filename = pdf_filename
+    db.session.commit()
+    return pdf_bytes, pdf_filename, pdf_path
+
+# Hilfsfunktion: Signatur für eine E-Mail-Adresse abrufen
+def get_signature_for_email(email_address, username=None):
+    """Ruft die Signatur für eine E-Mail-Adresse ab, falls ein Postfach dafür hinterlegt ist"""
+    try:
+        if username:
+            cred = ExchangeCredential.query.filter_by(email=email_address, username=username).first()
+        else:
+            # Suche nach E-Mail-Adresse, unabhängig vom Benutzer
+            cred = ExchangeCredential.query.filter_by(email=email_address).first()
+        
+        if cred and cred.signature:
+            return cred.signature
+    except Exception as e:
+        print(f"⚠️ Fehler beim Abrufen der Signatur für {email_address}: {e}")
+    return None
+
+# 📧 E-Mail-Antwort senden
+@app.route('/api/emails/reply', methods=['POST'])
+def reply_email():
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    data = request.get_json() or {}
+    cred_id = data.get('cred_id')
+    account_type = data.get('type', 'exchange')
+    email_id = data.get('email_id')
+    to_email = data.get('to')  # E-Mail-Adresse des Empfängers
+    subject = data.get('subject', '').strip()
+    body = data.get('body', '').strip()
+    
+    if not cred_id or not email_id or not to_email or not body:
+        return jsonify({"error": "Fehlende Parameter"}), 400
+    
+    # Betreff mit "Re: " präfixen falls nicht vorhanden
+    if not subject.startswith('Re:') and not subject.startswith('RE:'):
+        subject = f"Re: {subject}"
+    
+    # SMTP-Konfiguration aus Umgebungsvariablen
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+    smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+    smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+    smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+    
+    if not smtp_username or not smtp_password:
+        return jsonify({"error": "SMTP-Credentials nicht konfiguriert"}), 400
+    
+    try:
+        # E-Mail erstellen
+        message = MIMEMultipart('alternative')
+        message['Subject'] = subject
+        message['From'] = f"HelpCare <{smtp_username}>"
+        message['To'] = to_email
+        
+        # Signatur hinzufügen, falls vorhanden
+        cred_row = ExchangeCredential.query.filter_by(id=cred_id, username=session['user']).first()
+        signature = cred_row.signature if cred_row and cred_row.signature else ''
+        
+        # Text und HTML Versionen mit Signatur
+        body_with_signature = body
+        newline = '\n'
+        body_with_signature_html = body.replace(newline, '<br>')
+        
+        if signature:
+            # Signatur ist HTML, füge sie hinzu
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)  # HTML-Tags entfernen
+            signature_text = unescape(signature_text)  # HTML-Entities dekodieren
+            signature_text = signature_text.replace(newline, ' ').strip()  # Zeilenumbrüche normalisieren
+            
+            body_with_signature = f"{body}{newline}{newline}{signature_text}"
+            # Für HTML-Version: Signatur direkt anhängen (bereits HTML)
+            body_html_base = body.replace(newline, '<br>')
+            body_with_signature_html = f"{body_html_base}<br><br>{signature}"
+        
+        # Plain-Text Version (für E-Mail-Clients ohne HTML)
+        body_text_final = body_with_signature
+        
+        # HTML Version mit Signatur
+        body_html_final = (
+            "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
+            body_with_signature_html +
+            "</div>"
+        )
+        
+        text_part = MIMEText(body_text_final, 'plain', 'utf-8')
+        html_part = MIMEText(body_html_final, 'html', 'utf-8')
+        
+        message.attach(text_part)
+        message.attach(html_part)
+        
+        # SMTP-Verbindung aufbauen und E-Mail senden
+        if smtp_use_ssl:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        
+        print(f"✅ Antwort erfolgreich über SMTP versendet an {to_email}")
+        return jsonify({"success": True, "message": "Antwort erfolgreich gesendet"})
+        
+    except Exception as e:
+        error_str = str(e)
+        print(f"❌ Fehler beim Senden der Antwort: {error_str}")
+        return jsonify({"error": f"Fehler beim Senden: {error_str}"}), 500
+
+# Exchange-Account löschen
+@app.route('/api/exchange/accounts/<int:cred_id>', methods=['DELETE'])
+def delete_exchange_account(cred_id):
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    try:
+        cred = ExchangeCredential.query.filter_by(id=cred_id, username=session['user']).first()
+        if not cred:
+            return jsonify({"error": "Exchange-Account nicht gefunden"}), 404
+        
+        db.session.delete(cred)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Löschen: {str(e)}"}), 500
+
+# E-Mail-Signatur speichern
+@app.route('/api/exchange/accounts/<int:cred_id>/signature', methods=['PUT'])
+def update_exchange_signature(cred_id):
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    try:
+        cred = ExchangeCredential.query.filter_by(id=cred_id, username=session['user']).first()
+        if not cred:
+            return jsonify({"error": "Exchange-Account nicht gefunden"}), 404
+        
+        data = request.get_json() or {}
+        signature = data.get('signature', '').strip()
+        
+        cred.signature = signature
+        db.session.commit()
+        
+        return jsonify({"success": True, "message": "Signatur gespeichert"})
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Speichern: {str(e)}"}), 500
+
+# E-Mail-Signatur abrufen
+@app.route('/api/exchange/accounts/<int:cred_id>/signature', methods=['GET'])
+def get_exchange_signature(cred_id):
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    try:
+        cred = ExchangeCredential.query.filter_by(id=cred_id, username=session['user']).first()
+        if not cred:
+            return jsonify({"error": "Exchange-Account nicht gefunden"}), 404
+        
+        return jsonify({"signature": cred.signature or ""})
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Abrufen: {str(e)}"}), 500
 
 
 # 📧 Angebot per E-Mail versenden (PDF Base64)
@@ -1360,105 +2449,117 @@ def send_offer():
     if not to_email or not pdf_b64:
         return jsonify({"error": "to und pdf_base64 erforderlich"}), 400
 
-    # Load credentials with send scope if possible
-    creds = load_user_gmail_credentials(session['user'])
-    if not creds:
-        return jsonify({"error": "Kein Gmail-Konto verbunden."}), 400
+    # Prüfe ob es sich um einen Befragungsbogen handelt (vor E-Mail-Versand)
+    is_questionnaire = (
+        'befragungsbogen' in filename.lower() or 
+        'befragungsbogen' in subject.lower() or
+        'befragungsbogen' in body.lower()
+    )
+    
+    # Für Befragungsbogen: Dateiname ändern
+    if is_questionnaire:
+        form_fields = data.get('form_fields', {})
+        customer_id = form_fields.get('kunden_id', '')
+        if customer_id:
+            filename = f"Bedarfsfragebogen_{customer_id}.pdf"
+        else:
+            filename = "Bedarfsfragebogen.pdf"
+
+    # SMTP-Konfiguration aus Umgebungsvariablen
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+    smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+    smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+    smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+    
+    if not smtp_username or not smtp_password:
+        return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
+
     try:
-        service = build('gmail', 'v1', credentials=creds)
-
-        # Try to fetch Gmail signature (HTML) and append to message
-        signature_html = None
-        try:
-            settings = service.users().settings().sendAs().list(userId='me').execute() or {}
-            send_as_list = settings.get('sendAs', []) or []
-            primary = None
-            for sa in send_as_list:
-                if sa.get('isPrimary') or sa.get('isDefault'):
-                    primary = sa
-                    break
-            if not primary and send_as_list:
-                primary = send_as_list[0]
-            if primary:
-                signature_html = (primary.get('signature') or '').strip() or None
-        except Exception:
-            signature_html = None
-
-        # Prepare text and HTML bodies
-        def html_to_text(html:str) -> str:
-            try:
-                # basic tag replacement for line breaks
-                repl = html.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
-                import re
-                repl = re.sub(r'<[^>]+>', '', repl)
-                # unescape common entities
-                repl = repl.replace('&nbsp;', ' ').replace('&amp;', '&')
-                return repl
-            except Exception:
-                return ''
-
+        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        signature = get_signature_for_email(smtp_username)
+        newline = '\n'
+        
+        # Prepare text and HTML bodies mit Signatur
         body_text_final = body
+        body_html_final = body.replace(newline, '<br>')
+        
+        if signature:
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text_final = f"{body}{newline}{newline}{signature_text}"
+            # Für HTML: Signatur direkt anhängen
+            body_html_final = f"{body.replace(newline, '<br>')}<br><br>{signature}"
+        
         body_html_final = (
             "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            (body or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
+            body_html_final +
             "</div>"
         )
-        if signature_html:
-            sig_text = html_to_text(signature_html).strip()
-            if sig_text:
-                body_text_final = body_text_final.rstrip() + "\n\n" + sig_text
-            body_html_final = body_html_final + "<div>" + signature_html + "</div>"
 
-        # Prüfe ob es sich um einen Befragungsbogen handelt (vor E-Mail-Versand)
-        is_questionnaire = (
-            'befragungsbogen' in filename.lower() or 
-            'befragungsbogen' in subject.lower() or
-            'befragungsbogen' in body.lower()
-        )
-
-        # Build MIME message with multipart/alternative (text + HTML) and PDF attachment
-        mixed_boundary = 'mixed_boundary'
-        alt_boundary = 'alt_boundary'
-        message_parts = []
-        message_parts.append(f"Content-Type: multipart/mixed; boundary={mixed_boundary}\r\n")
-        message_parts.append(f"MIME-Version: 1.0\r\n")
+        # E-Mail erstellen
+        message = MIMEMultipart('mixed')
+        message['Subject'] = subject
+        message['From'] = f"HelpCare <{smtp_username}>"
+        message['To'] = to_email
         
-        # Für Befragungsbogen: BCC an alle Kooperationspartner
+        # Für Befragungsbogen: BCC an ausgewählte Kooperationspartner
         if is_questionnaire:
-            partners = Kooperationspartner.query.all()
-            bcc_emails = [partner.email for partner in partners]
+            # Prüfe ob Partner explizit übergeben wurden
+            partners_data = data.get('partners', [])
+            if partners_data:
+                # Verwende übergebene Partner
+                bcc_emails = [partner.get('email') for partner in partners_data if partner.get('email')]
+            else:
+                # Fallback: Alle Partner (für Rückwärtskompatibilität)
+                partners = Kooperationspartner.query.all()
+                bcc_emails = [partner.email for partner in partners if partner.email]
+            
             if bcc_emails:
-                message_parts.append(f"bcc: {', '.join(bcc_emails)}\r\n")
+                message['Bcc'] = ', '.join(bcc_emails)
                 print(f"DEBUG: Sende Befragungsbogen per BCC an: {bcc_emails}")
+
+        # Text und HTML Versionen
+        text_part = MIMEText(body_text_final, 'plain', 'utf-8')
+        html_part = MIMEText(body_html_final, 'html', 'utf-8')
         
-        message_parts.append(f"to: {to_email}\r\n")
-        message_parts.append(f"subject: {subject}\r\n\r\n")
         # Alternative part (text + HTML)
-        message_parts.append(f"--{mixed_boundary}\r\n")
-        message_parts.append(f"Content-Type: multipart/alternative; boundary={alt_boundary}\r\n\r\n")
-        # Text
-        message_parts.append(f"--{alt_boundary}\r\n")
-        message_parts.append("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
-        message_parts.append(body_text_final + "\r\n\r\n")
-        # HTML
-        message_parts.append(f"--{alt_boundary}\r\n")
-        message_parts.append("Content-Type: text/html; charset=UTF-8\r\n\r\n")
-        message_parts.append(body_html_final + "\r\n\r\n")
-        # End alternative
-        message_parts.append(f"--{alt_boundary}--\r\n")
-        # Attachment part
-        message_parts.append(f"--{mixed_boundary}\r\n")
-        message_parts.append(f"Content-Type: application/pdf; name={filename}\r\n")
-        message_parts.append("Content-Transfer-Encoding: base64\r\n")
-        message_parts.append(f"Content-Disposition: attachment; filename={filename}\r\n\r\n")
-        # Strip header if present
+        alternative = MIMEMultipart('alternative')
+        alternative.attach(text_part)
+        alternative.attach(html_part)
+        message.attach(alternative)
+        
+        # PDF-Anhang hinzufügen
         if pdf_b64.startswith('data:application/pdf;base64,'):
             pdf_b64 = pdf_b64.split(',', 1)[1]
-        message_parts.append(pdf_b64 + "\r\n")
-        message_parts.append(f"--{mixed_boundary}--")
-        raw_message = ''.join(message_parts).encode('utf-8')
-        raw = urlsafe_b64encode(raw_message).decode('utf-8')
-        service.users().messages().send(userId='me', body={'raw': raw}).execute()
+        
+        pdf_data = base64.b64decode(pdf_b64)
+        pdf_attachment = MIMEBase('application', 'pdf')
+        pdf_attachment.set_payload(pdf_data)
+        encoders.encode_base64(pdf_attachment)
+        pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
+        message.attach(pdf_attachment)
+
+        # SMTP-Verbindung aufbauen und E-Mail senden
+        if smtp_use_ssl:
+            # SSL-Verbindung (Port 465)
+            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        else:
+            # STARTTLS-Verbindung (Port 587)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        
+        print(f"✅ E-Mail erfolgreich über SMTP versendet an {to_email}")
         
         # Automatisch Kunde speichern - unterscheide zwischen Angebot und Befragungsbogen
         customer_name = sms_name or name_full or None
@@ -1565,8 +2666,35 @@ def send_offer():
             except Exception:
                 pass
         return jsonify({"success": True})
+        
+    except smtplib.SMTPAuthenticationError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Authentifizierungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Authentifizierung fehlgeschlagen. Bitte SMTP-Credentials (Benutzername/Passwort) überprüfen. Server: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPConnectError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Verbindungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Verbindung fehlgeschlagen. Bitte SMTP-Server und Port überprüfen. Versucht: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPDataError as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore')
+        print(f"❌ SMTP-Datenfehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
+    except smtplib.SMTPException as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore') if hasattr(e, 'smtp_error') else error_str
+        print(f"❌ SMTP-Fehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Senden fehlgeschlagen: {str(e)}"}), 500
+        error_str = str(e)
+        print(f"❌ E-Mail-Versand Fehler: {error_str}")
+        return jsonify({"error": f"E-Mail-Versand fehlgeschlagen: {error_str}"}), 500
 
 # 📧 Erinnerungsmail an Kooperationspartner senden
 @app.route('/api/send-reminder', methods=['POST'])
@@ -1585,50 +2713,52 @@ def send_reminder():
     if not partners:
         return jsonify({"error": "Mindestens ein Kooperationspartner erforderlich"}), 400
     
-    # Load credentials
-    creds = load_user_gmail_credentials(session['user'])
-    if not creds:
-        return jsonify({"error": "Kein Gmail-Konto verbunden."}), 400
+    # SMTP-Konfiguration aus Umgebungsvariablen
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+    smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+    smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+    smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+    
+    if not smtp_username or not smtp_password:
+        return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
     
     try:
-        service = build('gmail', 'v1', credentials=creds)
+        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        signature = get_signature_for_email(smtp_username)
+        newline = '\n'
         
         # Prepare email content
         body_text_final = body or "Hallo,\n\nhier ist eine Erinnerung von HelpCare.\n\nMit besten Grüßen\nTeam HelpCare"
+        body_html_final = body_text_final.replace(newline, '<br>')
+        
+        if signature:
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text_final = f"{body_text_final}{newline}{newline}{signature_text}"
+            # Für HTML: Signatur direkt anhängen
+            body_html_final = f"{body_html_final}<br><br>{signature}"
+        
         body_html_final = (
             "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            (body_text_final or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
+            body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
             "</div>"
         )
-        
-        # Try to get signature
-        try:
-            settings = service.users().settings().sendAs().list(userId='me').execute() or {}
-            send_as_list = settings.get('sendAs', []) or []
-            primary = None
-            for sa in send_as_list:
-                if sa.get('isPrimary') or sa.get('isDefault'):
-                    primary = sa
-                    break
-            if not primary and send_as_list:
-                primary = send_as_list[0]
-            if primary:
-                signature_html = (primary.get('signature') or '').strip() or None
-                if signature_html:
-                    body_html_final += signature_html
-        except Exception:
-            pass
         
         # Create message
         message = MIMEMultipart('alternative')
         message['Subject'] = subject
-        
-        # Für Kooperationspartner immer team@helpcare.de verwenden
-        message['From'] = 'team@helpcare.de'
+        message['From'] = f"HelpCare <{smtp_username}>"
         
         # Add BCC recipients
-        bcc_emails = [partner['email'] for partner in partners]
-        message['Bcc'] = ', '.join(bcc_emails)
+        bcc_emails = [partner['email'] for partner in partners if partner.get('email')]
+        if bcc_emails:
+            message['Bcc'] = ', '.join(bcc_emails)
         
         # Add text and HTML parts
         text_part = MIMEText(body_text_final, 'plain', 'utf-8')
@@ -1637,17 +2767,51 @@ def send_reminder():
         message.attach(text_part)
         message.attach(html_part)
         
-        # Send email
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
-        service.users().messages().send(
-            userId='me',
-            body={'raw': raw_message}
-        ).execute()
+        # SMTP-Verbindung aufbauen und E-Mail senden
+        if smtp_use_ssl:
+            # SSL-Verbindung (Port 465)
+            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        else:
+            # STARTTLS-Verbindung (Port 587)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
         
-        return jsonify({"success": True, "sent_to": len(partners)})
+        print(f"✅ Erinnerungsmail erfolgreich über SMTP versendet an {len(bcc_emails)} Kooperationspartner")
+        return jsonify({"success": True, "sent_to": len(bcc_emails)})
         
+    except smtplib.SMTPAuthenticationError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Authentifizierungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Authentifizierung fehlgeschlagen. Bitte SMTP-Credentials (Benutzername/Passwort) überprüfen. Server: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPConnectError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Verbindungsfehler: {error_str}")
+        return jsonify({"error": f"SMTP-Verbindung fehlgeschlagen. Bitte SMTP-Server und Port überprüfen. Versucht: {smtp_server}:{smtp_port}"}), 500
+    except smtplib.SMTPDataError as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore')
+        print(f"❌ SMTP-Datenfehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
+    except smtplib.SMTPException as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore') if hasattr(e, 'smtp_error') else error_str
+        print(f"❌ SMTP-Fehler: {error_str} (Code: {error_code})")
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return jsonify({"error": f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"}), 500
+        return jsonify({"error": f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Senden fehlgeschlagen: {str(e)}"}), 500
+        error_str = str(e)
+        print(f"❌ E-Mail-Versand Fehler: {error_str}")
+        return jsonify({"error": f"E-Mail-Versand fehlgeschlagen: {error_str}"}), 500
 
 # 📲 Webhook von Chatwoot empfangen
 @app.route("/webhook/chatwoot", methods=["POST"])
@@ -1811,8 +2975,19 @@ def react_team_note(note_id: int):
 @app.route('/api/customers', methods=['GET', 'POST'])
 def customers():
     if request.method == 'GET':
-        customers = Customer.query.order_by(Customer.created_at.desc()).all()
-        return jsonify([customer.to_dict() for customer in customers])
+        # Optionale Pagination (default: alle)
+        page = request.args.get('page', type=int, default=1)
+        per_page = request.args.get('per_page', type=int, default=1000)  # Groß genug für normale Nutzung
+        
+        pagination = Customer.query.order_by(Customer.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        return jsonify({
+            'items': [customer.to_dict() for customer in pagination.items],
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'page': page
+        })
     
     elif request.method == 'POST':
         data = request.get_json()
@@ -1826,8 +3001,10 @@ def customers():
             name=data.get('name'),
             email=data.get('email'),
             phone=data.get('phone'),
+            mobile_phone=data.get('mobile_phone'),
             company=data.get('company'),
             notes=data.get('notes'),
+            status=data.get('status'),
             street_address=data.get('street_address'),
             postal_code=data.get('postal_code'),
             city=data.get('city'),
@@ -1854,8 +3031,12 @@ def customer_detail(customer_id):
         customer.name = data.get('name', customer.name)
         customer.email = data.get('email', customer.email)
         customer.phone = data.get('phone', customer.phone)
+        customer.mobile_phone = data.get('mobile_phone', customer.mobile_phone)
         customer.company = data.get('company', customer.company)
         customer.notes = data.get('notes', customer.notes)
+        # Status-Update zulassen (freie Strings, UI liefert feste Auswahl)
+        if 'status' in data:
+            customer.status = data.get('status')
         customer.street_address = data.get('street_address', customer.street_address)
         customer.postal_code = data.get('postal_code', customer.postal_code)
         customer.city = data.get('city', customer.city)
@@ -1987,8 +3168,19 @@ def add_questionnaire_data(customer_id):
 @app.route('/api/kooperationspartner', methods=['GET'])
 def get_kooperationspartner():
     try:
-        partners = Kooperationspartner.query.order_by(Kooperationspartner.name).all()
-        return jsonify([partner.to_dict() for partner in partners])
+        # Optionale Pagination (default: alle)
+        page = request.args.get('page', type=int, default=1)
+        per_page = request.args.get('per_page', type=int, default=1000)  # Groß genug für normale Nutzung
+        
+        pagination = Kooperationspartner.query.order_by(Kooperationspartner.name).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        return jsonify({
+            'items': [partner.to_dict() for partner in pagination.items],
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'page': page
+        })
     except Exception as e:
         return jsonify({"error": f"Fehler beim Laden: {str(e)}"}), 500
 
@@ -2012,7 +3204,9 @@ def create_kooperationspartner():
             commercial_register=data.get('commercial_register', '').strip(),
             vat_id=data.get('vat_id', '').strip(),
             managing_director=data.get('managing_director', '').strip(),
-            emergency_phone=data.get('emergency_phone', '').strip()
+            emergency_phone=data.get('emergency_phone', '').strip(),
+            provision=data.get('provision', '').strip() or None,
+            notes=(data.get('notes') or '').strip() or None
         )
         db.session.add(partner)
         db.session.commit()
@@ -2052,7 +3246,21 @@ def kooperationspartner_detail(partner_id):
             if 'emergency_phone' in data:
                 partner.emergency_phone = data['emergency_phone'].strip()
             if 'provision' in data:
-                partner.provision = str(data['provision']).strip()
+                provision_value = str(data['provision']).strip()
+                # Nur aktualisieren, wenn ein Wert vorhanden ist
+                # Leere Werte werden ignoriert, um vorhandene Werte nicht zu überschreiben
+                if provision_value:
+                    partner.provision = provision_value
+                # Wenn explizit leer gesetzt werden soll, dann auf None setzen
+                # Aber nur wenn es wirklich leer ist (nicht nur Whitespace)
+                elif provision_value == '':
+                    partner.provision = None
+            if 'notes' in data:
+                notes_value = data.get('notes')
+                if notes_value is None:
+                    partner.notes = None
+                else:
+                    partner.notes = notes_value.strip() if isinstance(notes_value, str) else notes_value
             
             db.session.commit()
             return jsonify(partner.to_dict())
@@ -2180,8 +3388,19 @@ def kooperationsvertraege():
         return jsonify({"error": "Nicht eingeloggt"}), 401
     
     if request.method == 'GET':
-        contracts = Kooperationsvertrag.query.order_by(Kooperationsvertrag.created_at.desc()).all()
-        return jsonify([contract.to_dict() for contract in contracts])
+        # Optionale Pagination (default: alle)
+        page = request.args.get('page', type=int, default=1)
+        per_page = request.args.get('per_page', type=int, default=1000)  # Groß genug für normale Nutzung
+        
+        pagination = Kooperationsvertrag.query.order_by(Kooperationsvertrag.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        return jsonify({
+            'items': [contract.to_dict() for contract in pagination.items],
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'page': page
+        })
     
     elif request.method == 'POST':
         data = request.get_json() or {}
@@ -2260,59 +3479,34 @@ def generate_kooperationsvertrag_pdf(contract_id):
         return jsonify({"error": "Sender oder Receiver Partner nicht gefunden"}), 404
     
     try:
-        # Template laden
-        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'kooperationsvertrag.html')
-        with open(template_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Variablen ersetzen
-        replacements = {
-            '[Firmenname des Dienstleisters]': sender_partner.company_name or sender_partner.name,
-            '[Straße]': sender_partner.street_address.split(',')[0] if sender_partner.street_address else '',
-            '[PLZ]': sender_partner.street_address.split(',')[1].strip().split(' ')[0] if sender_partner.street_address and ',' in sender_partner.street_address else '',
-            '[Ort]': sender_partner.street_address.split(',')[1].strip().split(' ')[1] if sender_partner.street_address and ',' in sender_partner.street_address and len(sender_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
-            '[Land]': 'Deutschland',
-            '[Vertretungsberechtigte]': sender_partner.managing_director or '',
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y')
-        }
-        
-        # Alle Variablen ersetzen
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
-        
-        # PDF generieren mit weasyprint
+        html_content = _render_kooperationsvertrag_html(contract, receiver_partner)
         try:
-            from weasyprint import HTML, CSS
-            from weasyprint.text.fonts import FontConfiguration
-            
-            font_config = FontConfiguration()
-            html_doc = HTML(string=html_content)
-            css = CSS(string='@page { size: A4; margin: 1.5cm; }', font_config=font_config)
-            
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
-            # PDF-Dateiname generieren
-            pdf_filename = f"kooperationsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
-            
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
-            
-            # Contract aktualisieren
-            contract.pdf_filename = pdf_filename
-            db.session.commit()
-            
+            pdf_filename, pdf_url = _generate_kooperationsvertrag_pdf_from_html(contract, html_content)
             return jsonify({
                 "success": True,
                 "pdf_filename": pdf_filename,
-                "pdf_url": f"/uploads/{pdf_filename}"
+                "pdf_url": pdf_url
             })
-            
         except Exception as e:
             return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
-            
     except Exception as e:
         return jsonify({"error": f"Fehler beim Laden des Templates: {str(e)}"}), 500
+
+@app.route('/api/kooperationsvertraege/<int:contract_id>/preview')
+def preview_kooperationsvertrag(contract_id):
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    contract = Kooperationsvertrag.query.get_or_404(contract_id)
+    receiver_partner = Kooperationspartner.query.get(contract.receiver_partner_id)
+    if not receiver_partner:
+        return jsonify({"error": "Kooperationspartner nicht gefunden"}), 404
+    
+    try:
+        html_content = contract.custom_html or _render_kooperationsvertrag_html(contract, receiver_partner)
+        return jsonify({"success": True, "html": html_content})
+    except Exception as e:
+        return jsonify({"error": f"Preview konnte nicht erstellt werden: {str(e)}"}), 500
 
 @app.route('/api/kooperationsvertraege/<int:contract_id>/send-docuseal', methods=['POST'])
 def send_kooperationsvertrag_docuseal(contract_id):
@@ -2342,51 +3536,19 @@ def send_kooperationsvertrag_docuseal(contract_id):
         print(f"❌ Fehler beim Laden des Receiver Partners: {e}")
         return jsonify({"error": f"Receiver Partner (ID: {contract.receiver_partner_id}) nicht gefunden"}), 404
 
-    # PDF generieren falls noch nicht vorhanden
-    if not contract.pdf_filename:
+    data = request.get_json(silent=True) or {}
+    custom_html = data.get('html_content')
+    if custom_html:
+        contract.custom_html = custom_html
+    
+    try:
+        html_content = custom_html or contract.custom_html or _render_kooperationsvertrag_html(contract, receiver_partner)
+    except Exception as e:
+        return jsonify({"error": f"Template konnte nicht erstellt werden: {str(e)}"}), 500
+    
+    if custom_html or not contract.pdf_filename:
         try:
-            # PDF generieren durch direkten Aufruf der Logik
-            template_path = os.path.join(os.path.dirname(__file__), 'templates', 'kooperationsvertrag.html')
-            with open(template_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            # Variablen ersetzen - WICHTIG: receiver_partner ist der Dienstleister!
-            replacements = {
-                '[Firmenname des Dienstleisters]': receiver_partner.company_name or receiver_partner.name,
-                '[Straße]': receiver_partner.street_address.split(',')[0] if receiver_partner.street_address else '',
-                '[PLZ]': receiver_partner.street_address.split(',')[1].strip().split(' ')[0] if receiver_partner.street_address and ',' in receiver_partner.street_address else '',
-                '[Ort]': receiver_partner.street_address.split(',')[1].strip().split(' ')[1] if receiver_partner.street_address and ',' in receiver_partner.street_address and len(receiver_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
-                '[Land]': 'Deutschland',
-                '[Vertretungsberechtigte]': receiver_partner.managing_director or '',
-                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                '[Provision]': (receiver_partner.provision or '').strip()
-            }
-            
-            # Alle Variablen ersetzen
-            for placeholder, value in replacements.items():
-                html_content = html_content.replace(placeholder, str(value))
-            
-            # PDF generieren
-            from weasyprint import HTML, CSS
-            from weasyprint.text.fonts import FontConfiguration
-            
-            font_config = FontConfiguration()
-            html_doc = HTML(string=html_content)
-            css = CSS(string='@page { size: A4; margin: 1.5cm; }', font_config=font_config)
-            
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
-            # PDF-Dateiname generieren
-            pdf_filename = f"kooperationsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
-            
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
-            
-            # Contract aktualisieren
-            contract.pdf_filename = pdf_filename
-            db.session.commit()
-            
+            _generate_kooperationsvertrag_pdf_from_html(contract, html_content)
         except Exception as e:
             return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
 
@@ -2455,26 +3617,10 @@ def sign_kooperationsvertrag(contract_id):
     # Für die Anzeige müssen die Daten des Dienstleisters (Empfänger) verwendet werden
     receiver_partner = Kooperationspartner.query.get(contract.receiver_partner_id)
     
-    # Lade Template
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'kooperationsvertrag.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
+    if not receiver_partner:
+        return jsonify({"error": "Kooperationspartner nicht gefunden"}), 404
     
-    # Ersetze Variablen (Empfänger = Dienstleister)
-    if receiver_partner:
-        replacements = {
-            '[Firmenname des Dienstleisters]': receiver_partner.company_name or receiver_partner.name,
-            '[Straße]': receiver_partner.street_address.split(',')[0] if receiver_partner.street_address else '',
-            '[PLZ]': receiver_partner.street_address.split(',')[1].strip().split(' ')[0] if receiver_partner.street_address and ',' in receiver_partner.street_address else '',
-            '[Ort]': receiver_partner.street_address.split(',')[1].strip().split(' ')[1] if receiver_partner.street_address and ',' in receiver_partner.street_address and len(receiver_partner.street_address.split(',')[1].strip().split(' ')) > 1 else '',
-            '[Land]': 'Deutschland',
-            '[Vertretungsberechtigte]': receiver_partner.managing_director or '',
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Provision]': (receiver_partner.provision or '').strip()
-        }
-        
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
+    html_content = contract.custom_html or _render_kooperationsvertrag_html(contract, receiver_partner)
     
     # Prüfe ob bereits signiert (wie in SignaturApp) - WICHTIG: NACH Variablen ersetzung
     if contract.status == 'signed' and contract.signature_data:
@@ -2511,8 +3657,19 @@ def dienstleistungsvertraege():
         return jsonify({"error": "Nicht eingeloggt"}), 401
     
     if request.method == 'GET':
-        contracts = Dienstleistungsvertrag.query.order_by(Dienstleistungsvertrag.created_at.desc()).all()
-        return jsonify([contract.to_dict() for contract in contracts])
+        # Optionale Pagination (default: alle)
+        page = request.args.get('page', type=int, default=1)
+        per_page = request.args.get('per_page', type=int, default=1000)  # Groß genug für normale Nutzung
+        
+        pagination = Dienstleistungsvertrag.query.order_by(Dienstleistungsvertrag.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        return jsonify({
+            'items': [contract.to_dict() for contract in pagination.items],
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'page': page
+        })
     
     elif request.method == 'POST':
         data = request.get_json() or {}
@@ -2520,6 +3677,7 @@ def dienstleistungsvertraege():
         customer_id = data.get('customer_id')
         kooperationspartner_id = data.get('kooperationspartner_id')
         contract_number = data.get('contract_number')
+        contract_date_str = data.get('contract_date')
         
         if not all([customer_id, kooperationspartner_id, contract_number]):
             return jsonify({"error": "Kunden-ID, Kooperationspartner-ID und Vertragsnummer sind erforderlich"}), 400
@@ -2535,10 +3693,19 @@ def dienstleistungsvertraege():
             if not partner:
                 return jsonify({"error": f"Kooperationspartner mit ID {kooperationspartner_id} nicht gefunden. Bitte einen gültigen Partner auswählen."}), 404
             
+            # Vertragsdatum parsen (Format: YYYY-MM-DD)
+            contract_date = None
+            if contract_date_str:
+                try:
+                    contract_date = datetime.datetime.strptime(contract_date_str, '%Y-%m-%d')
+                except ValueError:
+                    return jsonify({"error": "Ungültiges Datumsformat. Bitte verwenden Sie das Format YYYY-MM-DD."}), 400
+            
             contract = Dienstleistungsvertrag(
                 customer_id=customer_id,
                 kooperationspartner_id=kooperationspartner_id,
                 contract_number=contract_number,
+                contract_date=contract_date,  # Datum vom Benutzer oder None (dann wird default verwendet)
                 monthly_rate=data.get('monthly_rate'),
                 contract_location=customer.city if customer else None,  # Ort vom Kunden übernehmen
                 contract_data_json=json.dumps(data.get('contract_data', {}))
@@ -2604,77 +3771,40 @@ def generate_contract_pdf(contract_id):
         return jsonify({"error": "Kunde oder Kooperationspartner nicht gefunden"}), 404
     
     try:
-        # Template laden
-        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-        with open(template_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Variablen ersetzen
-        replacements = {
-            '[Auftragsnummer]': contract.contract_number,
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Vorname Name]': customer.name,
-            '[Straße Hausnummer]': customer.street_address or '',
-            '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name or '',
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-            '[Ort]': customer.city or '',
-            '[Partnerfirma]': partner.partner_company or partner.name
-        }
-        
-        # Alle Variablen ersetzen
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
-        
-        # PDF generieren mit weasyprint
-        try:
-            from weasyprint import HTML, CSS
-            from weasyprint.text.fonts import FontConfiguration
-            
-            font_config = FontConfiguration()
-            html_doc = HTML(string=html_content)
-            css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
-            
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
-            # PDF speichern
-            pdf_filename = f"dienstleistungsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
-            
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
-            
-            # In Datenbank speichern
-            contract.pdf_filename = pdf_filename
-            db.session.commit()
-            
-            # PDF als Base64 zurückgeben
-            pdf_b64 = base64.b64encode(pdf_bytes).decode('ascii')
-            
-            return jsonify({
-                "success": True,
-                "pdf_base64": f"data:application/pdf;base64,{pdf_b64}",
-                "filename": pdf_filename
-            })
-            
-        except ImportError:
-            return jsonify({"error": "weasyprint ist nicht installiert. Bitte installieren Sie es mit: pip install weasyprint"}), 500
-        except Exception as e:
-            return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
-            
+        html_content = _render_dienstleistungsvertrag_html(contract, customer, partner)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         return jsonify({"error": f"Fehler beim Laden des Templates: {str(e)}"}), 500
+    
+    try:
+        pdf_bytes, pdf_filename, _ = _generate_dienstleistungsvertrag_pdf_from_html(contract, html_content)
+    except ImportError:
+        return jsonify({"error": "weasyprint ist nicht installiert. Bitte installieren Sie es mit: pip install weasyprint"}), 500
+    except Exception as e:
+        return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
+    
+    pdf_b64 = base64.b64encode(pdf_bytes).decode('ascii')
+    return jsonify({
+        "success": True,
+        "pdf_base64": f"data:application/pdf;base64,{pdf_b64}",
+        "filename": pdf_filename
+    })
+
+@app.route('/api/dienstleistungsvertraege/<int:contract_id>/preview')
+def preview_dienstleistungsvertrag(contract_id):
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
+    try:
+        html_content = _render_dienstleistungsvertrag_html(contract)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"Preview konnte nicht erstellt werden: {str(e)}"}), 500
+    
+    return jsonify({"success": True, "html": html_content})
 
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/send-for-signature', methods=['POST'])
 def send_contract_for_signature(contract_id):
@@ -2684,72 +3814,37 @@ def send_contract_for_signature(contract_id):
     
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
     if not customer:
         return jsonify({"error": "Kunde nicht gefunden"}), 404
     
-    if not partner:
+    if not coop_partner:
         return jsonify({"error": "Kooperationspartner nicht gefunden"}), 404
     
-    # Wende die send_docuseal_signature Logik an (ohne die Funktion zu duplizieren)
-    # Zuerst PDF generieren falls noch nicht vorhanden
-    if not contract.pdf_filename:
+    data = request.get_json(silent=True) or {}
+    custom_html = data.get('html_content')
+    if custom_html:
+        contract.custom_html = custom_html
+    
+    try:
+        html_content = custom_html or _render_dienstleistungsvertrag_html(contract, customer, coop_partner)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"Template konnte nicht erstellt werden: {str(e)}"}), 500
+    
+    pdf_generated = False
+    if custom_html or not contract.pdf_filename:
         try:
-            # PDF generieren durch direkten Aufruf der Logik
-            template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-            with open(template_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            # Variablen ersetzen
-            replacements = {
-                '[Auftragsnummer]': contract.contract_number,
-                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                '[Vorname Name]': customer.name,
-                '[Straße Hausnummer]': customer.street_address or '',
-                '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                '[Telefon Kunde]': customer.phone or '',
-                '[E-Mail Kunde]': customer.email or '',
-                '[Firmenname Partner]': partner.company_name or partner.name,
-                '[Adresse Partner]': partner.street_address or '',
-                '[Telefon Partner]': partner.phone or '',
-                '[E-Mail Partner]': partner.email or '',
-                '[Identifikationsnummer Partner]': partner.identification_number or '',
-                '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-                '[Ort]': customer.city or ''
-            }
-            
-            # Alle Variablen ersetzen
-            for placeholder, value in replacements.items():
-                html_content = html_content.replace(placeholder, str(value))
-            
-            # PDF generieren
-            from weasyprint import HTML, CSS
-            from weasyprint.text.fonts import FontConfiguration
-            
-            font_config = FontConfiguration()
-            html_doc = HTML(string=html_content)
-            css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
-            
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
-            # PDF speichern
-            pdf_filename = f"dienstleistungsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
-            
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
-            
-            # In Datenbank speichern
-            contract.pdf_filename = pdf_filename
-            db.session.commit()
+            _generate_dienstleistungsvertrag_pdf_from_html(contract, html_content)
+            pdf_generated = True
+        except ImportError:
+            return jsonify({"error": "weasyprint ist nicht installiert. Bitte installieren Sie es mit: pip install weasyprint"}), 500
         except Exception as e:
             return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
+    elif custom_html:
+        db.session.commit()
     
     # E-Mail an KUNDE senden
     customer_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/customer"
@@ -2764,12 +3859,19 @@ def send_contract_for_signature(contract_id):
     if not success:
         return jsonify({"error": f"E-Mail-Versand an Kunde Fehler: {error_msg}"}), 500
     
+    # Wartezeit zwischen E-Mails, um Rate-Limits zu vermeiden
+    # Ionos hat ein sehr striktes Rate-Limit - benötigt längere Pause
+    import time
+    print(f"⏳ Warte 60 Sekunden vor dem Versand der zweiten E-Mail (Ionos Rate-Limit)...")
+    time.sleep(60)  # 60 Sekunden Pause zwischen den E-Mails (Ionos Rate-Limit)
+    print(f"✅ Wartezeit abgeschlossen, versende zweite E-Mail...")
+    
     # E-Mail an PARTNER senden
     partner_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/partner"
     success, error_msg = send_signature_email(
         contract_id=contract_id,
-        customer_email=partner.email,
-        customer_name=partner.name or partner.company_name,
+        customer_email=coop_partner.email,
+        customer_name=coop_partner.name or coop_partner.company_name,
         contract_type="dienstleistungsvertrag",
         signature_url=partner_signature_url
     )
@@ -3007,8 +4109,8 @@ def create_docusign_envelope(contract_id, customer_email, customer_name, contrac
         print(f"❌ DocuSign Envelope-Fehler: {str(e)}")
         return None, str(e)
 
-def send_signature_email(contract_id, customer_email, customer_name, contract_type="dienstleistungsvertrag", signature_url=None):
-    """Sendet E-Mail mit Signatur-Link im schönen HTML-Design"""
+def send_signature_email_smtp(contract_id, customer_email, customer_name, contract_type="dienstleistungsvertrag", signature_url=None):
+    """Sendet E-Mail mit Signatur-Link über SMTP (Ionos/Outlook)"""
     try:
         # Vertrag laden basierend auf Typ
         if contract_type == "kooperationsvertrag":
@@ -3021,20 +4123,21 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
         if not contract:
             return False, "Vertrag nicht gefunden"
         
-        # Gmail Credentials laden
-        username = session.get('user') if 'user' in session else None
-        if not username:
-            return False, "Keine Gmail-Credentials gefunden"
+        # SMTP-Konfiguration aus Umgebungsvariablen
+        # Unterstützte Provider:
+        # - Ionos Exchange: smtp.exchange.ionos.eu (Port 587, TLS) - für Microsoft Exchange über Ionos
+        # - Ionos: smtp.ionos.de (Port 587, STARTTLS) oder smtp.ionos.de (Port 465, SSL)
+        # - Outlook/Office 365: smtp.office365.com (Port 587, TLS)
+        # - Gmail: smtp.gmail.com (Port 587, TLS) - benötigt App-Passwort
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')  # Ionos Exchange SMTP-Server (laut Ionos-Einstellungen)
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+        smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+        smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+        smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
         
-        gmail_cred = GmailCredential.query.filter_by(username=username).first()
-        if not gmail_cred:
-            return False, "Keine Gmail-Credentials gefunden"
-        
-        # Gmail Service aufbauen
-        credentials_data = json.loads(gmail_cred.token_json)
-        credentials = Credentials.from_authorized_user_info(credentials_data)
-        
-        service = build('gmail', 'v1', credentials=credentials)
+        if not smtp_username or not smtp_password:
+            return False, "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."
         
         # Signatur-URL generieren (falls nicht angegeben)
         if not signature_url:
@@ -3043,7 +4146,7 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
             else:
                 signature_url = f"{request.host_url}api/{contract_type}s/{contract_id}/sign"
         
-        # HTML-E-Mail mit schönem Design erstellen
+        # HTML-E-Mail mit schönem Design erstellen (gleicher Inhalt wie Gmail-Version)
         html_body = f"""
 <!DOCTYPE html>
 <html>
@@ -3134,27 +4237,94 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
 """
         
         # E-Mail erstellen
-        message = MIMEText(html_body, 'html')
-        message['to'] = customer_email
-        message['subject'] = f"{contract_type_name} {contract.contract_number} zur Unterschrift"
-        message['from'] = f"HelpCare <{credentials_data.get('email', 'team@helpcare.de')}>"
+        message = MIMEMultipart('alternative')
+        message['Subject'] = f"{contract_type_name} {contract.contract_number} zur Unterschrift"
+        message['From'] = f"HelpCare <{smtp_username}>"
+        message['To'] = customer_email
         
-        # E-Mail als Raw senden
-        raw_message = urlsafe_b64encode(message.as_bytes()).decode()
+        # HTML und Plain-Text Versionen
+        text_part = MIMEText(f"""Guten Tag {customer_name},
+
+anbei erhalten Sie Ihren {contract_type_name} zur elektronischen Unterschrift.
+
+Bitte klicken Sie auf den folgenden Link, um den Vertrag zu signieren:
+{signature_url}
+
+Vertragsdetails:
+- Vertragsnummer: {contract.contract_number}
+- Typ: {contract_type_name}
+
+Bei Fragen sind wir jederzeit für Sie erreichbar.
+team@helpcare.de | 030 - 232 53 57 100
+
+Mit freundlichen Grüßen,
+Ihr HelpCare Team
+
+HelpCare GmbH | Kurfürstendamm 14 | 10719 Berlin""", 'plain', 'utf-8')
+        html_part = MIMEText(html_body, 'html', 'utf-8')
         
-        send_result = service.users().messages().send(
-            userId='me',
-            body={'raw': raw_message}
-        ).execute()
+        message.attach(text_part)
+        message.attach(html_part)
         
-        print(f"✅ E-Mail erfolgreich versendet an {customer_email}")
-        print(f"   Message ID: {send_result['id']}")
+        # SMTP-Verbindung aufbauen und E-Mail senden
+        if smtp_use_ssl:
+            # SSL-Verbindung (Port 465)
+            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        else:
+            # STARTTLS-Verbindung (Port 587)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(message)
+        
+        print(f"✅ E-Mail erfolgreich über SMTP versendet an {customer_email}")
         
         return True, None
         
+    except smtplib.SMTPAuthenticationError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Authentifizierungsfehler: {error_str}")
+        return False, f"SMTP-Authentifizierung fehlgeschlagen. Bitte SMTP-Credentials (Benutzername/Passwort) überprüfen. Server: {smtp_server}:{smtp_port}"
+    except smtplib.SMTPConnectError as e:
+        error_str = str(e)
+        print(f"❌ SMTP-Verbindungsfehler: {error_str}")
+        return False, f"SMTP-Verbindung fehlgeschlagen. Bitte SMTP-Server und Port überprüfen. Versucht: {smtp_server}:{smtp_port}"
+    except smtplib.SMTPDataError as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore')
+        print(f"❌ SMTP-Datenfehler: {error_str} (Code: {error_code})")
+        # Rate-Limit-Erkennung
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return False, f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"
+        return False, f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"
+    except smtplib.SMTPException as e:
+        error_str = str(e)
+        error_code = getattr(e, 'smtp_code', None)
+        error_msg = getattr(e, 'smtp_error', b'').decode('utf-8', errors='ignore') if hasattr(e, 'smtp_error') else error_str
+        print(f"❌ SMTP-Fehler: {error_str} (Code: {error_code})")
+        # Rate-Limit-Erkennung auch hier
+        if error_code == 421 or 'rate' in error_msg.lower() or 'limit' in error_msg.lower():
+            return False, f"SMTP-Rate-Limit erreicht: Zu viele E-Mails in kurzer Zeit gesendet. Bitte warten Sie einige Minuten und versuchen Sie es erneut. (Fehler: {error_msg})"
+        return False, f"SMTP-Versand fehlgeschlagen: {error_msg or error_str}"
     except Exception as e:
-        print(f"❌ E-Mail-Versand Fehler: {str(e)}")
-        return False, str(e)
+        error_str = str(e)
+        print(f"❌ E-Mail-Versand Fehler: {error_str}")
+        return False, f"E-Mail-Versand fehlgeschlagen: {error_str}"
+
+def send_signature_email(contract_id, customer_email, customer_name, contract_type="dienstleistungsvertrag", signature_url=None):
+    """Sendet E-Mail mit Signatur-Link im schönen HTML-Design über SMTP (Ionos/Outlook)"""
+    # Verwende SMTP (Ionos/Outlook)
+    smtp_result, smtp_error = send_signature_email_smtp(contract_id, customer_email, customer_name, contract_type, signature_url)
+    if smtp_result:
+        return smtp_result, smtp_error
+    # Falls SMTP fehlschlägt, gib den SMTP-Fehler zurück
+    print(f"❌ SMTP-Versand fehlgeschlagen: {smtp_error}")
+    return False, f"SMTP-Versand fehlgeschlagen: {smtp_error}"
+    
 
 # Manuelle Status-Aktualisierung
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/check-status', methods=['POST'])
@@ -3199,71 +4369,37 @@ def send_docuseal_signature(contract_id):
     
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
     if not customer:
         return jsonify({"error": "Kunde nicht gefunden"}), 404
     
-    if not partner:
+    if not coop_partner:
         return jsonify({"error": "Kooperationspartner nicht gefunden"}), 404
     
-    # Zuerst PDF generieren falls noch nicht vorhanden
-    if not contract.pdf_filename:
+    data = request.get_json(silent=True) or {}
+    custom_html = data.get('html_content')
+    if custom_html:
+        contract.custom_html = custom_html
+    
+    try:
+        html_content = custom_html or _render_dienstleistungsvertrag_html(contract, customer, coop_partner)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"Template konnte nicht erstellt werden: {str(e)}"}), 500
+    
+    pdf_generated = False
+    if custom_html or not contract.pdf_filename:
         try:
-            # PDF generieren durch direkten Aufruf der Logik
-            template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-            with open(template_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            # Variablen ersetzen
-            replacements = {
-                '[Auftragsnummer]': contract.contract_number,
-                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                '[Vorname Name]': customer.name,
-                '[Straße Hausnummer]': customer.street_address or '',
-                '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                '[Telefon Kunde]': customer.phone or '',
-                '[E-Mail Kunde]': customer.email or '',
-                '[Firmenname Partner]': partner.company_name or partner.name,
-                '[Adresse Partner]': partner.street_address or '',
-                '[Telefon Partner]': partner.phone or '',
-                '[E-Mail Partner]': partner.email or '',
-                '[Identifikationsnummer Partner]': partner.identification_number or '',
-                '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-                '[Ort]': customer.city or ''
-            }
-            
-            # Alle Variablen ersetzen
-            for placeholder, value in replacements.items():
-                html_content = html_content.replace(placeholder, str(value))
-            
-            # PDF generieren
-            from weasyprint import HTML, CSS
-            from weasyprint.text.fonts import FontConfiguration
-            
-            font_config = FontConfiguration()
-            html_doc = HTML(string=html_content)
-            css = CSS(string='@page { size: A4; margin: 2cm; }', font_config=font_config)
-            
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            
-            # PDF speichern
-            pdf_filename = f"dienstleistungsvertrag_{contract.contract_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            pdf_path = os.path.join(UPLOAD_FOLDER, pdf_filename)
-            
-            with open(pdf_path, 'wb') as f:
-                f.write(pdf_bytes)
-            
-            # In Datenbank speichern
-            contract.pdf_filename = pdf_filename
-            db.session.commit()
+            _generate_dienstleistungsvertrag_pdf_from_html(contract, html_content)
+            pdf_generated = True
+        except ImportError:
+            return jsonify({"error": "weasyprint ist nicht installiert. Bitte installieren Sie es mit: pip install weasyprint"}), 500
         except Exception as e:
             return jsonify({"error": f"PDF-Generierung fehlgeschlagen: {str(e)}"}), 500
+    elif custom_html:
+        db.session.commit()
     
     # E-Mail an KUNDE senden
     customer_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/customer"
@@ -3278,12 +4414,19 @@ def send_docuseal_signature(contract_id):
     if not success:
         return jsonify({"error": f"E-Mail-Versand an Kunde Fehler: {error_msg}"}), 500
     
+    # Wartezeit zwischen E-Mails, um Rate-Limits zu vermeiden
+    # Ionos hat ein sehr striktes Rate-Limit - benötigt längere Pause
+    import time
+    print(f"⏳ Warte 60 Sekunden vor dem Versand der zweiten E-Mail (Ionos Rate-Limit)...")
+    time.sleep(60)  # 60 Sekunden Pause zwischen den E-Mails (Ionos Rate-Limit)
+    print(f"✅ Wartezeit abgeschlossen, versende zweite E-Mail...")
+    
     # E-Mail an PARTNER senden
     partner_signature_url = f"{request.host_url}api/dienstleistungsvertraege/{contract_id}/sign/partner"
     success, error_msg = send_signature_email(
         contract_id=contract_id,
-        customer_email=partner.email,
-        customer_name=partner.name or partner.company_name,
+        customer_email=coop_partner.email,
+        customer_name=coop_partner.name or coop_partner.company_name,
         contract_type="dienstleistungsvertrag",
         signature_url=partner_signature_url
     )
@@ -3440,7 +4583,7 @@ def test_docusign():
         return jsonify({"error": f"DocuSign Test fehlgeschlagen: {str(e)}"}), 500
 
 # Alternative: PDF mit Signatur-Feldern und E-Mail-Versand
-@app.route('/api/dienstleistungsvertraege/<int:contract_id>/send-for-signature', methods=['POST'])
+@app.route('/api/dienstleistungsvertraege/<int:contract_id>/send-for-signature-alt', methods=['POST'])
 def send_contract_for_signature_alternative(contract_id):
     """Vertrag als PDF mit Signatur-Feldern generieren und per E-Mail senden"""
     if "user" not in session:
@@ -3448,12 +4591,12 @@ def send_contract_for_signature_alternative(contract_id):
     
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
     if not customer:
         return jsonify({"error": "Kunde nicht gefunden"}), 404
     
-    if not partner:
+    if not coop_partner:
         return jsonify({"error": "Kooperationspartner nicht gefunden"}), 404
     
     try:
@@ -3476,7 +4619,7 @@ def send_contract_for_signature_alternative(contract_id):
                 <div style="width: 45%; text-align: center;">
                     <div style="border-bottom: 1px solid black; height: 50px; margin-bottom: 10px;"></div>
                     <p><strong>Unterschrift Kooperationspartner</strong></p>
-                    <p>""" + (partner.company_name or partner.name) + """</p>
+                    <p>""" + (coop_partner.company_name or coop_partner.name) + """</p>
                     <p>Datum: _______________</p>
                 </div>
             </div>
@@ -3495,19 +4638,19 @@ def send_contract_for_signature_alternative(contract_id):
             '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
             '[Telefon Kunde]': customer.phone or '',
             '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name or '',
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
+            '[Firmenname Partner]': coop_partner.company_name or coop_partner.name or '',
+            '[Adresse Partner]': coop_partner.street_address or '',
+            '[Telefon Partner]': coop_partner.phone or '',
+            '[E-Mail Partner]': coop_partner.email or '',
+            '[Identifikationsnummer Partner]': coop_partner.identification_number or '',
+            '[Handelsregisternummer Partner]': coop_partner.commercial_register or '',
+            '[Umsatzsteuer-Identifikationsnummer Partner]': coop_partner.vat_id or '',
+            '[Name Geschäftsführer Partner]': coop_partner.managing_director or '',
+            '[Notfalltelefon Partner]': coop_partner.emergency_phone or '',
             '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
             '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
             '[Ort]': customer.city or '',
-            '[Partnerfirma]': partner.partner_company or partner.name
+            '[Partnerfirma]': coop_partner.partner_company or coop_partner.name
         }
         
         # Alle Variablen ersetzen
@@ -3559,9 +4702,9 @@ def generate_signed_pdf(contract_id):
     
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
-    if not customer or not partner:
+    if not customer or not coop_partner:
         return jsonify({"error": "Kunde oder Kooperationspartner nicht gefunden"}), 404
     
     try:
@@ -3584,7 +4727,7 @@ def generate_signed_pdf(contract_id):
                 <div style="width: 45%; text-align: center;">
                     <div style="border-bottom: 1px solid black; height: 50px; margin-bottom: 10px;"></div>
                     <p><strong>Unterschrift Kooperationspartner</strong></p>
-                    <p>""" + (partner.company_name or partner.name) + """</p>
+                    <p>""" + (coop_partner.company_name or coop_partner.name) + """</p>
                     <p>Datum: _______________</p>
                 </div>
             </div>
@@ -3603,19 +4746,19 @@ def generate_signed_pdf(contract_id):
             '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
             '[Telefon Kunde]': customer.phone or '',
             '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name or '',
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
+            '[Firmenname Partner]': coop_partner.company_name or coop_partner.name or '',
+            '[Adresse Partner]': coop_partner.street_address or '',
+            '[Telefon Partner]': coop_partner.phone or '',
+            '[E-Mail Partner]': coop_partner.email or '',
+            '[Identifikationsnummer Partner]': coop_partner.identification_number or '',
+            '[Handelsregisternummer Partner]': coop_partner.commercial_register or '',
+            '[Umsatzsteuer-Identifikationsnummer Partner]': coop_partner.vat_id or '',
+            '[Name Geschäftsführer Partner]': coop_partner.managing_director or '',
+            '[Notfalltelefon Partner]': coop_partner.emergency_phone or '',
             '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
             '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
             '[Ort]': customer.city or '',
-            '[Partnerfirma]': partner.partner_company or partner.name
+            '[Partnerfirma]': coop_partner.partner_company or coop_partner.name
         }
         
         # Alle Variablen ersetzen
@@ -3930,39 +5073,14 @@ def sign_dienstleistungsvertrag_customer(contract_id):
     """Zeigt den Dienstleistungsvertrag zur Signatur für den KUNDEN an"""
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
-    # Lade Template
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    # Ersetze Variablen
-    if customer and partner:
-        replacements = {
-            '[Auftragsnummer]': contract.contract_number,
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Vorname Name]': customer.name,
-            '[Straße Hausnummer]': customer.street_address or '',
-            '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name,
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-            '[Ort]': customer.city or ''
-        }
-        
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
+    try:
+        html_content = _render_dienstleistungsvertrag_html(contract, customer, coop_partner)
+    except ValueError as e:
+        return f"Fehler: {str(e)}", 404
+    except Exception as e:
+        return f"Fehler beim Laden des Templates: {str(e)}", 500
     
     # Füge CSS hinzu um Partner-Unterschrifts-Spalte zu verstecken und Kunden-Unterschrift zu zentrieren
     hide_partner_style = '''<style>
@@ -3971,7 +5089,10 @@ def sign_dienstleistungsvertrag_customer(contract_id):
         table.email-table:has(#signature-placeholder) tr td:nth-child(2) { width: 10% !important; }
         table.email-table:has(#signature-placeholder) tr td:nth-child(3) { width: 30% !important; }
     </style>'''
-    html_content = html_content.replace('</head>', hide_partner_style + '</head>')
+    if '</head>' in html_content:
+        html_content = html_content.replace('</head>', hide_partner_style + '</head>', 1)
+    else:
+        html_content = hide_partner_style + html_content
     
     # Prüfe ob KUNDE bereits signiert hat
     if contract.status in ['customer_signed', 'partner_signed', 'completed'] and contract.signature_data:
@@ -3988,39 +5109,14 @@ def sign_dienstleistungsvertrag_partner(contract_id):
     """Zeigt den Dienstleistungsvertrag zur Signatur für den PARTNER an"""
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
-    # Lade Template
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    # Ersetze Variablen
-    if customer and partner:
-        replacements = {
-            '[Auftragsnummer]': contract.contract_number,
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Vorname Name]': customer.name,
-            '[Straße Hausnummer]': customer.street_address or '',
-            '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name,
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-            '[Ort]': customer.city or ''
-        }
-        
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
+    try:
+        html_content = _render_dienstleistungsvertrag_html(contract, customer, coop_partner)
+    except ValueError as e:
+        return f"Fehler: {str(e)}", 404
+    except Exception as e:
+        return f"Fehler beim Laden des Templates: {str(e)}", 500
     
     # Verstecke Kunden-Unterschrifts-Spalte für den Partner und zentriere Partner-Unterschrift
     hide_customer_style = '''<style>
@@ -4029,7 +5125,10 @@ def sign_dienstleistungsvertrag_partner(contract_id):
         table.email-table:has(#signature-placeholder-partner) tr td:nth-child(2) { width: 10% !important; }
         table.email-table:has(#signature-placeholder-partner) tr td:nth-child(3) { width: 60% !important; text-align: center !important; }
     </style>'''
-    html_content = html_content.replace('</head>', hide_customer_style + '</head>')
+    if '</head>' in html_content:
+        html_content = html_content.replace('</head>', hide_customer_style + '</head>', 1)
+    else:
+        html_content = hide_customer_style + html_content
     
     # Prüfe ob PARTNER bereits signiert hat
     if contract.status in ['partner_signed', 'completed'] and contract.partner_signature_data:
@@ -4046,39 +5145,14 @@ def sign_dienstleistungsvertrag(contract_id):
     """Zeigt den Dienstleistungsvertrag zur Signatur an"""
     contract = Dienstleistungsvertrag.query.get_or_404(contract_id)
     customer = Customer.query.get(contract.customer_id)
-    partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+    coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
     
-    # Lade Template
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    # Ersetze Variablen
-    if customer and partner:
-        replacements = {
-            '[Auftragsnummer]': contract.contract_number,
-            '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-            '[Vorname Name]': customer.name,
-            '[Straße Hausnummer]': customer.street_address or '',
-            '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-            '[Telefon Kunde]': customer.phone or '',
-            '[E-Mail Kunde]': customer.email or '',
-            '[Firmenname Partner]': partner.company_name or partner.name,
-            '[Adresse Partner]': partner.street_address or '',
-            '[Telefon Partner]': partner.phone or '',
-            '[E-Mail Partner]': partner.email or '',
-            '[Identifikationsnummer Partner]': partner.identification_number or '',
-            '[Handelsregisternummer Partner]': partner.commercial_register or '',
-            '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-            '[Name Geschäftsführer Partner]': partner.managing_director or '',
-            '[Notfalltelefon Partner]': partner.emergency_phone or '',
-            '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-            '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-            '[Ort]': customer.city or ''
-        }
-        
-        for placeholder, value in replacements.items():
-            html_content = html_content.replace(placeholder, str(value))
+    try:
+        html_content = _render_dienstleistungsvertrag_html(contract, customer, coop_partner)
+    except ValueError as e:
+        return f"Fehler: {str(e)}", 404
+    except Exception as e:
+        return f"Fehler beim Laden des Templates: {str(e)}", 500
     
     # Prüfe ob bereits signiert (wie in SignaturApp) - WICHTIG: NACH Variablen ersetzung
     if contract.status == 'signed' and contract.signature_data:
@@ -4202,40 +5276,14 @@ def create_signed_contract_pdf_complete(contract):
             
         print(f"✅ Beide Signaturen vorhanden")
         
-        # Lade Template
-        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dienstleistungsvertrag.html')
-        with open(template_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Variablen ersetzen
-        customer = Customer.query.get(contract.customer_id)
-        partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
-        
-        if customer and partner:
-            replacements = {
-                '[Auftragsnummer]': contract.contract_number,
-                '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                '[Vorname Name]': customer.name,
-                '[Straße Hausnummer]': customer.street_address or '',
-                '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                '[Telefon Kunde]': customer.phone or '',
-                '[E-Mail Kunde]': customer.email or '',
-                '[Firmenname Partner]': partner.company_name or partner.name,
-                '[Adresse Partner]': partner.street_address or '',
-                '[Telefon Partner]': partner.phone or '',
-                '[E-Mail Partner]': partner.email or '',
-                '[Identifikationsnummer Partner]': partner.identification_number or '',
-                '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-                '[Ort]': customer.city or ''
-            }
-            
-            for placeholder, value in replacements.items():
-                html_content = html_content.replace(placeholder, str(value))
+        try:
+            html_content = _render_dienstleistungsvertrag_html(contract)
+        except ValueError as e:
+            print(f"❌ Fehler: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Fehler beim Laden des Templates: {str(e)}")
+            return None
         
         print(f"✅ Variablen ersetzt")
         
@@ -4293,33 +5341,17 @@ def create_signed_contract_pdf(contract, signature_data, contract_type):
         # Variablen ersetzen
         if contract_type == "dienstleistungsvertrag":
             customer = Customer.query.get(contract.customer_id)
-            partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
-            
-            if customer and partner:
-                replacements = {
-                    '[Auftragsnummer]': contract.contract_number,
-                    '[Datum]': contract.contract_date.strftime('%d.%m.%Y') if contract.contract_date else datetime.datetime.now().strftime('%d.%m.%Y'),
-                    '[Vorname Name]': customer.name,
-                    '[Straße Hausnummer]': customer.street_address or '',
-                    '[PLZ Ort]': f"{customer.postal_code or ''} {customer.city or ''}".strip(),
-                    '[Telefon Kunde]': customer.phone or '',
-                    '[E-Mail Kunde]': customer.email or '',
-                    '[Firmenname Partner]': partner.company_name or partner.name,
-                    '[Adresse Partner]': partner.street_address or '',
-                    '[Telefon Partner]': partner.phone or '',
-                    '[E-Mail Partner]': partner.email or '',
-                    '[Identifikationsnummer Partner]': partner.identification_number or '',
-                    '[Handelsregisternummer Partner]': partner.commercial_register or '',
-                    '[Umsatzsteuer-Identifikationsnummer Partner]': partner.vat_id or '',
-                    '[Name Geschäftsführer Partner]': partner.managing_director or '',
-                    '[Notfalltelefon Partner]': partner.emergency_phone or '',
-                    '[Betrag]': format_currency(contract.monthly_rate) if contract.monthly_rate else '',
-                    '[Tagessatz]': format_currency(round(contract.monthly_rate / 30, 2)) if contract.monthly_rate else '',
-                    '[Ort]': customer.city or ''
-                }
-                
-                for placeholder, value in replacements.items():
-                    html_content = html_content.replace(placeholder, str(value))
+            coop_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+            try:
+                html_content = contract.custom_html or _render_dienstleistungsvertrag_html(
+                    contract,
+                    customer,
+                    coop_partner,
+                    ignore_custom=True
+                )
+            except Exception as e:
+                print(f"❌ Fehler beim Rendern des Dienstleistungsvertrags: {str(e)}")
+                return None
         else:
             # Kooperationsvertrag - WICHTIG: receiver_partner ist der Dienstleister!
             receiver_partner = Kooperationspartner.query.get(contract.receiver_partner_id)
@@ -4413,7 +5445,7 @@ def download_signed_contract_pdf(contract_id):
     if not os.path.exists(pdf_path):
         return jsonify({"error": "Unterschriebene PDF-Datei nicht gefunden"}), 404
     
-    return send_file(pdf_path, as_attachment=True, download_name=contract.signed_pdf_filename)
+    return send_file(pdf_path, as_attachment=True, download_name="Dienstleistungsvertrag.pdf")
 
 @app.route('/webhook/zoho-sign', methods=['POST'])
 def zoho_sign_webhook():

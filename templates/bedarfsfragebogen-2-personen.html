@@ -1325,7 +1325,7 @@ table.adl-table th, table.hilfsmittel-table th {
         </div>
         <div>
             <div class="vertical-checkbox-group">
-                <div class="checkbox-item"><input type="checkbox" id="ausstattung_telefon" name="ausstattung"><label for="ausstattung_telefon">Telefon</label></div>
+                <div class="checkbox-item"><input type="checkbox" id="ausstattung_telefon" name="ausstattung"><label for="ausstattung_telefon">TV</label></div>
             </div>
         </div>
         <div>
@@ -1438,7 +1438,7 @@ async function generatePDF() {
         const vorname = vorname1 && vorname2 ? `${vorname1}_${vorname2}` : (vorname1 || vorname2 || 'Unbekannt');
         
         const date = new Date().toISOString().split('T')[0];
-        const fileName = `Bedarfsfragebogen_2-Personen_${vorname}_${date}.pdf`;
+        const fileName = `Bedarfsfragebogen.pdf`;
 
         // Download PDF
         const link = document.createElement('a');

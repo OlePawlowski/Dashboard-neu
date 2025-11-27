@@ -94,6 +94,23 @@ class GmailCredential(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ExchangeCredential(db.Model):
+    __tablename__ = 'exchange_credentials'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    username = db.Column(db.String(80), nullable=True, index=True)
+    token_json = db.Column(db.Text, nullable=True)  # OAuth-Token für Microsoft Graph API (optional)
+    email = db.Column(db.String(255), nullable=False)  # E-Mail-Adresse des Kontos
+    imap_server = db.Column(db.String(255), nullable=True)  # IMAP-Server (z.B. imap.exchange.ionos.eu)
+    imap_port = db.Column(db.Integer, nullable=True, default=993)  # IMAP-Port
+    imap_use_ssl = db.Column(db.Boolean, default=True)  # SSL verwenden
+    password = db.Column(db.String(255), nullable=True)  # Passwort für IMAP (verschlüsselt gespeichert)
+    signature = db.Column(db.Text, nullable=True)  # E-Mail-Signatur
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Kooperationspartner(db.Model):
     __tablename__ = 'kooperationspartner'
     
@@ -114,6 +131,7 @@ class Kooperationspartner(db.Model):
     
     # Neue Variable: Provision (z. B. "10.5%" oder "10,5 %")
     provision = db.Column(db.String(50), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
     
     # Vertragsdaten (JSON für Flexibilität)
     contract_data_json = db.Column(db.Text, nullable=True, default='{}')
@@ -133,7 +151,8 @@ class Kooperationspartner(db.Model):
             'vat_id': self.vat_id,
             'managing_director': self.managing_director,
             'emergency_phone': self.emergency_phone,
-            'provision': self.provision
+            'provision': self.provision,
+            'notes': self.notes
         }
         
         # JSON-Felder sicher parsen
@@ -148,14 +167,15 @@ class Kooperationsvertrag(db.Model):
     __tablename__ = 'kooperationsvertraege'
     
     id = db.Column(db.Integer, primary_key=True)
-    sender_partner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False)  # Partner der den Vertrag sendet
-    receiver_partner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False)  # Partner der den Vertrag erhält
+    sender_partner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False, index=True)  # Partner der den Vertrag sendet
+    receiver_partner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False, index=True)  # Partner der den Vertrag erhält
     contract_number = db.Column(db.String(100), nullable=False)
     contract_date = db.Column(db.DateTime, default=datetime.utcnow)
     contract_location = db.Column(db.String(255), nullable=True)  # Ort des Vertrags
+    custom_html = db.Column(db.Text, nullable=True)  # Benutzerdefinierter Vertragsinhalt
     
     # Status des Vertrags
-    status = db.Column(db.String(50), default='draft')  # draft, sent, signed, completed
+    status = db.Column(db.String(50), default='draft', index=True)  # draft, sent, signed, completed
     
     # DocuSign Integration
     envelope_id = db.Column(db.String(255), nullable=True)  # DocuSign Envelope ID
@@ -168,7 +188,7 @@ class Kooperationsvertrag(db.Model):
     # Vertragsdaten (JSON für Flexibilität)
     contract_data_json = db.Column(db.Text, nullable=True, default='{}')
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def to_dict(self):
@@ -180,6 +200,7 @@ class Kooperationsvertrag(db.Model):
             'contract_number': self.contract_number,
             'contract_date': self.contract_date.isoformat() if self.contract_date else None,
             'contract_location': self.contract_location,
+            'custom_html': self.custom_html,
             'status': self.status,
             'envelope_id': self.envelope_id,
             'pdf_filename': self.pdf_filename,
@@ -203,10 +224,13 @@ class Customer(db.Model):
     name = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), nullable=True)
     phone = db.Column(db.String(64), nullable=True)
+    mobile_phone = db.Column(db.String(64), nullable=True)
     company = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    last_contact = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    last_contact = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     notes = db.Column(db.Text, nullable=True)
+    # Kundenstatus (z. B. "Angebot versendet", "Abgesagt", "Im Einsatz", "Inaktiv")
+    status = db.Column(db.String(50), nullable=True, index=True)
     
     # Angebot-Variablen (JSON für Flexibilität)
     offer_data_json = db.Column(db.Text, nullable=True, default='{}')
@@ -235,10 +259,12 @@ class Customer(db.Model):
             'name': self.name,
             'email': self.email,
             'phone': self.phone,
+            'mobile_phone': self.mobile_phone,
             'company': self.company,
             'created_at': self.created_at.isoformat(),
             'last_contact': self.last_contact.isoformat(),
             'notes': self.notes,
+            'status': getattr(self, 'status', None),
             'street_address': self.street_address,
             'postal_code': self.postal_code,
             'city': self.city,
@@ -340,8 +366,8 @@ class Dienstleistungsvertrag(db.Model):
     __tablename__ = 'dienstleistungsvertraege'
     
     id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
-    kooperationspartner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False, index=True)
+    kooperationspartner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False, index=True)
     
     # Vertragsdaten
     contract_number = db.Column(db.String(100), nullable=False)
@@ -351,7 +377,7 @@ class Dienstleistungsvertrag(db.Model):
     contract_location = db.Column(db.String(100), nullable=True)  # Ort der Unterschrift
     
     # Status
-    status = db.Column(db.String(50), default='draft')  # draft, sent, customer_signed, partner_signed, completed
+    status = db.Column(db.String(50), default='draft', index=True)  # draft, sent, customer_signed, partner_signed, completed
     zoho_request_id = db.Column(db.String(255), nullable=True)  # Zoho Sign Request ID
     
     # Dokumente
@@ -359,11 +385,12 @@ class Dienstleistungsvertrag(db.Model):
     signed_pdf_filename = db.Column(db.String(255), nullable=True)
     signature_data = db.Column(db.Text, nullable=True)  # Signatur des Kunden als Base64
     partner_signature_data = db.Column(db.Text, nullable=True)  # Signatur des Partners als Base64
+    custom_html = db.Column(db.Text, nullable=True)  # Benutzerdefinierter Vertragsinhalt
     
     # Zusätzliche Daten (JSON)
     contract_data_json = db.Column(db.Text, nullable=True, default='{}')
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def to_dict(self):
@@ -387,6 +414,7 @@ class Dienstleistungsvertrag(db.Model):
             'pdf_filename': self.pdf_filename,
             'signed_pdf_filename': self.signed_pdf_filename,
             'partner_signature_data': self.partner_signature_data,
+            'custom_html': self.custom_html,
             'contract_data': contract_data,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

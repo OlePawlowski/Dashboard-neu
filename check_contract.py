@@ -31,3 +31,6 @@ with app.app_context():
                 print(f'Würde vermutlich dieser Partner verwendet werden soll')
 
 
+
+
+

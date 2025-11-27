@@ -23,3 +23,6 @@ with app.app_context():
         print('Kein Vertrag gefunden')
 
 
+
+
+

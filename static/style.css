@@ -309,7 +309,6 @@ body {
 }
 
 .sidebar {
-  width: 280px;
   background: var(--glass-bg);
   backdrop-filter: blur(12px);
   padding: 2rem 1rem;
@@ -324,6 +323,7 @@ body {
   display: flex; 
   flex-direction: column; 
   gap: 0.5rem; 
+  
 }
 .sidebar-gmail-header { 
   display: flex; 
@@ -852,12 +852,181 @@ body {
 .customer-item { padding: 0.75rem; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); cursor: pointer; transition: all 0.2s; }
 .customer-item:hover { background: rgba(255,255,255,0.1); }
 .customer-item.active { background: rgba(255,255,255,0.15); border-color: var(--accent); }
-.customer-item-info { }
+.customer-item-info { display: flex; flex-direction: column; gap: 0.25rem; position: relative; z-index: 1; }
 .customer-item-name { font-weight: 600; color: #111; margin-bottom: 0.25rem; }
 .customer-item-details { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
 .customer-item-details span { display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; color: #666; }
 .customer-item-details i { color: var(--accent); }
+.customer-item-details a { color: inherit; text-decoration: none; transition: color 0.2s; }
+.customer-item-details a:hover { color: var(--accent); text-decoration: underline; }
 .customer-item-meta { font-size: 0.75rem; color: #888; }
+
+/* Kundenstatus-basierte Hervorhebung - Apple Liquid Glass Look mit Pastellfarben */
+.customer-item.status-aktiv,
+.customer-item.status-im-einsatz {
+  background: linear-gradient(135deg, 
+    rgba(168, 230, 207, 0.25) 0%, 
+    rgba(184, 230, 184, 0.15) 50%,
+    rgba(255, 255, 255, 0.1) 100%) !important;
+  border-color: rgba(168, 230, 207, 0.4) !important;
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  box-shadow: 
+    0 2px 8px rgba(168, 230, 207, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px rgba(168, 230, 207, 0.1);
+}
+
+
+.customer-item.status-inaktiv,
+.customer-item.status-angebot-versendet {
+  background: linear-gradient(135deg, 
+    rgba(255, 229, 180, 0.25) 0%, 
+    rgba(255, 244, 224, 0.15) 50%,
+    rgba(255, 255, 255, 0.1) 100%) !important;
+  border-color: rgba(255, 229, 180, 0.4) !important;
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  box-shadow: 
+    0 2px 8px rgba(255, 229, 180, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px rgba(255, 229, 180, 0.1);
+}
+
+
+.customer-item.status-abgesagt {
+  background: linear-gradient(135deg, 
+    rgba(255, 179, 186, 0.25) 0%, 
+    rgba(255, 204, 203, 0.15) 50%,
+    rgba(255, 255, 255, 0.1) 100%) !important;
+  border-color: rgba(255, 179, 186, 0.4) !important;
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  box-shadow: 
+    0 2px 8px rgba(255, 179, 186, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px rgba(255, 179, 186, 0.1);
+}
+
+
+.customer-item.status-verstorben {
+  background: linear-gradient(135deg, 
+    rgba(255, 182, 193, 0.25) 0%, 
+    rgba(255, 192, 203, 0.15) 50%,
+    rgba(255, 255, 255, 0.1) 100%) !important;
+  border-color: rgba(255, 182, 193, 0.4) !important;
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  box-shadow: 
+    0 2px 8px rgba(255, 182, 193, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px rgba(255, 182, 193, 0.1);
+}
+
+
+/* Hover-Effekte für Status-Items */
+.customer-item.status-aktiv:hover,
+.customer-item.status-im-einsatz:hover {
+  background: linear-gradient(135deg, 
+    rgba(168, 230, 207, 0.35) 0%, 
+    rgba(184, 230, 184, 0.22) 50%,
+    rgba(255, 255, 255, 0.15) 100%) !important;
+  box-shadow: 
+    0 2px 10px rgba(168, 230, 207, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 1px rgba(168, 230, 207, 0.15);
+}
+
+.customer-item.status-inaktiv:hover,
+.customer-item.status-angebot-versendet:hover {
+  background: linear-gradient(135deg, 
+    rgba(255, 229, 180, 0.35) 0%, 
+    rgba(255, 244, 224, 0.22) 50%,
+    rgba(255, 255, 255, 0.15) 100%) !important;
+  box-shadow: 
+    0 2px 10px rgba(255, 229, 180, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 1px rgba(255, 229, 180, 0.15);
+}
+
+.customer-item.status-abgesagt:hover {
+  background: linear-gradient(135deg, 
+    rgba(255, 179, 186, 0.35) 0%, 
+    rgba(255, 204, 203, 0.22) 50%,
+    rgba(255, 255, 255, 0.15) 100%) !important;
+  box-shadow: 
+    0 2px 10px rgba(255, 179, 186, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 1px rgba(255, 179, 186, 0.15);
+}
+
+.customer-item.status-verstorben:hover {
+  background: linear-gradient(135deg, 
+    rgba(255, 182, 193, 0.35) 0%, 
+    rgba(255, 192, 203, 0.22) 50%,
+    rgba(255, 255, 255, 0.15) 100%) !important;
+  box-shadow: 
+    0 2px 10px rgba(255, 182, 193, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 1px rgba(255, 182, 193, 0.15);
+}
+
+/* Dark Mode Anpassungen für Status-Items mit Pastellfarben */
+.dark .customer-item.status-aktiv,
+.dark .customer-item.status-im-einsatz,
+body.dark .customer-item.status-aktiv,
+body.dark .customer-item.status-im-einsatz {
+  background: linear-gradient(135deg, 
+    rgba(168, 230, 207, 0.2) 0%, 
+    rgba(184, 230, 184, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 100%);
+  border-color: rgba(168, 230, 207, 0.45);
+  box-shadow: 
+    0 4px 16px rgba(168, 230, 207, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(168, 230, 207, 0.25);
+}
+
+.dark .customer-item.status-inaktiv,
+.dark .customer-item.status-angebot-versendet,
+body.dark .customer-item.status-inaktiv,
+body.dark .customer-item.status-angebot-versendet {
+  background: linear-gradient(135deg, 
+    rgba(255, 229, 180, 0.2) 0%, 
+    rgba(255, 244, 224, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 100%);
+  border-color: rgba(255, 229, 180, 0.45);
+  box-shadow: 
+    0 4px 16px rgba(255, 229, 180, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(255, 229, 180, 0.25);
+}
+
+.dark .customer-item.status-abgesagt,
+body.dark .customer-item.status-abgesagt {
+  background: linear-gradient(135deg, 
+    rgba(255, 179, 186, 0.2) 0%, 
+    rgba(255, 204, 203, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 100%);
+  border-color: rgba(255, 179, 186, 0.45);
+  box-shadow: 
+    0 4px 16px rgba(255, 179, 186, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(255, 179, 186, 0.25);
+}
+
+.dark .customer-item.status-verstorben,
+body.dark .customer-item.status-verstorben {
+  background: linear-gradient(135deg, 
+    rgba(255, 182, 193, 0.2) 0%, 
+    rgba(255, 192, 203, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 100%);
+  border-color: rgba(255, 182, 193, 0.45);
+  box-shadow: 
+    0 4px 16px rgba(255, 182, 193, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(255, 182, 193, 0.25);
+}
 
 .customer-profile { flex: 1; background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid var(--glass-border); overflow: hidden; }
 .customer-profile-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666; }
@@ -869,6 +1038,10 @@ body {
 .customer-profile-meta { display: flex; flex-wrap: wrap; gap: 1rem; }
 .customer-profile-meta span { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; color: #666; }
 .customer-profile-meta i { color: var(--accent); }
+.customer-profile-meta a { color: inherit; text-decoration: none; transition: color 0.2s; }
+.customer-profile-meta a:hover { color: var(--accent); text-decoration: underline; }
+.profile-item a { color: inherit; text-decoration: none; transition: color 0.2s; }
+.profile-item a:hover { color: var(--accent); text-decoration: underline; }
 .customer-profile-actions { display: flex; gap: 0.5rem; }
 
 .customer-profile-content { height: calc(100% - 80px); }
@@ -1146,6 +1319,77 @@ textarea:focus, select:focus { outline: none; box-shadow: var(--focus-ring); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.rich-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.editor-toolbar button {
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.04);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.editor-toolbar button:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.editor-toolbar button[data-command="bold"] {
+  font-weight: 700;
+}
+
+.editor-toolbar button[data-command="italic"] {
+  font-style: italic;
+}
+
+.editor-toolbar button[data-command="underline"] {
+  text-decoration: underline;
+}
+
+.editor-content {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: white;
+  min-height: 320px;
+  padding: 0.75rem;
+  overflow-y: auto;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.editor-html-source {
+  display: none;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  min-height: 320px;
+  padding: 0.75rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.editor-preview {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 1rem;
+  background: white;
+  overflow-y: auto;
 }
 
 /* Dark mode modal */

@@ -17,3 +17,6 @@ with app.app_context():
         print(f'managing_director: {partner.managing_director}')
 
 
+
+
+
