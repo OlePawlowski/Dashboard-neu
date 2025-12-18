@@ -1305,7 +1305,7 @@ textarea:focus, select:focus { outline: none; box-shadow: var(--focus-ring); }
 
 .modal-content {
   width: min(100%, 1100px);
-  max-height: 85vh;
+  max-height: 95vh;
   border-radius: var(--radius-panel);
   background: var(--glass-bg);
   padding: 1rem;

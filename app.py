@@ -9,6 +9,7 @@ import os
 import datetime
 from dotenv import load_dotenv
 import json
+import re
 import requests
 
 # DocuSign imports (vereinfacht - nur für Typen)
@@ -69,6 +70,14 @@ if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Performance-Optimierungen für Datenbankverbindungen
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,  # Prüft Verbindungen vor Nutzung
+    "pool_recycle": 3600,   # Recycelt Verbindungen nach 1 Stunde
+    "pool_size": 10,        # Connection Pool Größe
+    "max_overflow": 20,    # Zusätzliche Verbindungen bei Bedarf
+    "connect_args": {"check_same_thread": False} if "sqlite" in database_url else {}
+}
 
 CORS(app)
 Compress(app)
@@ -77,21 +86,36 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
-    # Leichtgewichtige Migration: fehlende Spalten zu team_notes hinzufügen (SQLite)
+    # Leichtgewichtige Migration: fehlende Spalten hinzufügen (SQLite & PostgreSQL kompatibel)
     try:
-        from sqlalchemy import text
+        from sqlalchemy import text, inspect
+        is_sqlite = "sqlite" in database_url
+        
+        def get_table_columns(conn, table_name):
+            """Holt Spalten einer Tabelle - kompatibel mit SQLite und PostgreSQL"""
+            if is_sqlite:
+                result = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+                return [row[1] for row in result]
+            else:
+                result = conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = :table_name
+                """), {"table_name": table_name}).fetchall()
+                return [row[0] for row in result]
+        
         with db.engine.connect() as conn:
             # Team notes migration
-            insp = conn.execute(text("PRAGMA table_info(team_notes)")).fetchall()
-            cols = [row[1] for row in insp]
+            cols = get_table_columns(conn, "team_notes")
             if 'parent_id' not in cols:
                 conn.execute(text("ALTER TABLE team_notes ADD COLUMN parent_id INTEGER"))
+                conn.commit()
             if 'reactions_json' not in cols:
                 conn.execute(text("ALTER TABLE team_notes ADD COLUMN reactions_json TEXT DEFAULT '[]'"))
+                conn.commit()
             
             # Signature data migration für beide Vertrags-Tabellen
-            insp = conn.execute(text("PRAGMA table_info(kooperationsvertraege)")).fetchall()
-            koop_cols = [row[1] for row in insp]
+            koop_cols = get_table_columns(conn, "kooperationsvertraege")
             if 'signature_data' not in koop_cols:
                 conn.execute(text("ALTER TABLE kooperationsvertraege ADD COLUMN signature_data TEXT"))
                 conn.commit()
@@ -99,8 +123,7 @@ with app.app_context():
                 conn.execute(text("ALTER TABLE kooperationsvertraege ADD COLUMN custom_html TEXT"))
                 conn.commit()
             
-            insp = conn.execute(text("PRAGMA table_info(dienstleistungsvertraege)")).fetchall()
-            dlv_cols = [row[1] for row in insp]
+            dlv_cols = get_table_columns(conn, "dienstleistungsvertraege")
             if 'signature_data' not in dlv_cols:
                 conn.execute(text("ALTER TABLE dienstleistungsvertraege ADD COLUMN signature_data TEXT"))
                 conn.commit()
@@ -110,8 +133,7 @@ with app.app_context():
             
             # Migration für ExchangeCredential: signature-Feld hinzufügen
             try:
-                insp = conn.execute(text("PRAGMA table_info(exchange_credentials)")).fetchall()
-                exc_cols = [row[1] for row in insp]
+                exc_cols = get_table_columns(conn, "exchange_credentials")
                 if 'signature' not in exc_cols:
                     conn.execute(text("ALTER TABLE exchange_credentials ADD COLUMN signature TEXT"))
                     conn.commit()
@@ -121,8 +143,7 @@ with app.app_context():
 
             # Migration für Kooperationspartner: notes-Feld hinzufügen
             try:
-                insp = conn.execute(text("PRAGMA table_info(kooperationspartner)")).fetchall()
-                partner_cols = [row[1] for row in insp]
+                partner_cols = get_table_columns(conn, "kooperationspartner")
                 if 'notes' not in partner_cols:
                     conn.execute(text("ALTER TABLE kooperationspartner ADD COLUMN notes TEXT"))
                     conn.commit()
@@ -136,9 +157,37 @@ with app.app_context():
     # Migration für Customer-Tabelle: Neue Spalten hinzufügen (falls nicht vorhanden)
     try:
         from sqlalchemy import text
+        is_sqlite = "sqlite" in database_url
+        
+        def get_table_columns(conn, table_name):
+            """Holt Spalten einer Tabelle - kompatibel mit SQLite und PostgreSQL"""
+            if is_sqlite:
+                result = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+                return [row[1] for row in result]
+            else:
+                result = conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = :table_name
+                """), {"table_name": table_name}).fetchall()
+                return [row[0] for row in result]
+        
+        def table_exists(conn, table_name):
+            """Prüft ob Tabelle existiert - kompatibel mit SQLite und PostgreSQL"""
+            if is_sqlite:
+                result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"), {"name": table_name}).fetchone()
+                return result is not None
+            else:
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = :table_name
+                    )
+                """), {"table_name": table_name}).scalar()
+                return result
+        
         with db.engine.connect() as conn:
-            insp = conn.execute(text("PRAGMA table_info(customers)")).fetchall()
-            cols = [row[1] for row in insp]
+            cols = get_table_columns(conn, "customers")
             if 'offer_data_json' not in cols:
                 conn.execute(text("ALTER TABLE customers ADD COLUMN offer_data_json TEXT DEFAULT '{}'"))
             if 'questionnaire_data_json' not in cols:
@@ -191,9 +240,8 @@ with app.app_context():
             if 'status' not in cols:
                 conn.execute(text("ALTER TABLE customers ADD COLUMN status VARCHAR(50)"))
             
-            # Kooperationspartner-Tabelle erstellen falls nicht vorhanden
-            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='kooperationspartner'"))
-            if not result.fetchone():
+            # Kooperationspartner-Tabelle erstellen falls nicht vorhanden (nur für SQLite, PostgreSQL nutzt db.create_all())
+            if not table_exists(conn, "kooperationspartner") and is_sqlite:
                 conn.execute(text("""
                     CREATE TABLE kooperationspartner (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,8 +253,7 @@ with app.app_context():
                 print("✅ kooperationspartner Tabelle erstellt")
             else:
                 # Neue Spalten zu bestehender Kooperationspartner-Tabelle hinzufügen
-                insp_partner = conn.execute(text("PRAGMA table_info(kooperationspartner)")).fetchall()
-                partner_cols = [row[1] for row in insp_partner]
+                partner_cols = get_table_columns(conn, "kooperationspartner")
                 if 'company_name' not in partner_cols:
                     conn.execute(text("ALTER TABLE kooperationspartner ADD COLUMN company_name VARCHAR(255)"))
                 if 'street_address' not in partner_cols:
@@ -228,9 +275,8 @@ with app.app_context():
                 if 'contract_data_json' not in partner_cols:
                     conn.execute(text("ALTER TABLE kooperationspartner ADD COLUMN contract_data_json TEXT DEFAULT '{}'"))
             
-            # Kooperationsvertrag-Tabelle erstellen falls nicht vorhanden
-            result_coop = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='kooperationsvertraege'"))
-            if not result_coop.fetchone():
+            # Kooperationsvertrag-Tabelle erstellen falls nicht vorhanden (nur für SQLite, PostgreSQL nutzt db.create_all())
+            if not table_exists(conn, "kooperationsvertraege") and is_sqlite:
                 conn.execute(text("""
                     CREATE TABLE kooperationsvertraege (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,9 +298,8 @@ with app.app_context():
                 """))
                 print("✅ kooperationsvertraege Tabelle erstellt")
             
-            # Dienstleistungsvertrag-Tabelle erstellen falls nicht vorhanden
-            result_contract = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='dienstleistungsvertraege'"))
-            if not result_contract.fetchone():
+            # Dienstleistungsvertrag-Tabelle erstellen falls nicht vorhanden (nur für SQLite, PostgreSQL nutzt db.create_all())
+            if not table_exists(conn, "dienstleistungsvertraege") and is_sqlite:
                 conn.execute(text("""
                     CREATE TABLE dienstleistungsvertraege (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -848,9 +893,9 @@ def send_latest_befragungsbogen():
     try:
         subject = data.get('subject') or "Befragungsbogen"
         body = data.get('body') or (
-            "Hallo,\n\n" 
-            "anbei befindet sich der Befragungsbogen.\n\n"
-            "Mit besten Grüßen"
+            "Sehr geehrte Damen und Herren,\n\n"
+            "anbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\n"
+            "Viele Grüße"
         )
         
         # SMTP-Konfiguration aus Umgebungsvariablen
@@ -864,15 +909,40 @@ def send_latest_befragungsbogen():
         if not smtp_username or not smtp_password:
             return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
 
-        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        # Signatur für SMTP-Absender abrufen, falls Postfach hinterlegt
+        # Versuche zuerst mit smtp_username, dann mit 'team@helpcare.de' als Fallback
         signature = get_signature_for_email(smtp_username)
+        if not signature and smtp_username != 'team@helpcare.de':
+            print(f"⚠️ Signatur nicht für {smtp_username} gefunden, versuche team@helpcare.de")
+            signature = get_signature_for_email('team@helpcare.de')
+        print(f"🔍 Signatur-Abruf für {smtp_username}: {'✅ gefunden' if signature else '❌ nicht gefunden'}")
         newline = '\n'
         
-        # Prepare text and HTML bodies mit Signatur
+        # E-Mail erstellen
+        message = MIMEMultipart('mixed')
+        message['Subject'] = subject
+        message['From'] = f"HelpCare <{smtp_username}>"
+        
+        # Für Befragungsbogen: BCC an alle Kooperationspartner
+        partners = Kooperationspartner.query.all()
+        bcc_emails = [partner.email for partner in partners if partner.email]
+        
+        # Für Befragungsbogen: An team@helpcare.de statt befragungsbogen@helpcare.de senden
+        if to_email == 'befragungsbogen@helpcare.de':
+            actual_to_email = 'team@helpcare.de'
+        else:
+            actual_to_email = to_email
+
+        # Prepare text and HTML bodies mit Signatur (OHNE BCC-Info)
         body_text_final = body
         body_html_final = body.replace(newline, '<br>')
         
+        # Body escapen (bevor Signatur hinzugefügt wird)
+        body_html_escaped = body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Signatur IMMER hinzufügen, wenn vorhanden
         if signature:
+            print(f"✅ Füge Signatur hinzu (Länge: {len(signature)} Zeichen)")
             # Für Plain-Text: HTML-Tags entfernen
             import re
             from html import unescape
@@ -880,29 +950,20 @@ def send_latest_befragungsbogen():
             signature_text = unescape(signature_text)
             signature_text = signature_text.replace(newline, ' ').strip()
             body_text_final = f"{body}{newline}{newline}{signature_text}"
-            # Für HTML: Signatur direkt anhängen
-            body_html_final = f"{body.replace(newline, '<br>')}<br><br>{signature}"
+            # Für HTML: Signatur nach dem Escaping hinzufügen (Signatur ist bereits HTML)
+            body_html_final = f"{body_html_escaped}<br><br>{signature}"
+            print(f"✅ HTML-Body mit Signatur erstellt (Gesamtlänge: {len(body_html_final)} Zeichen)")
+        else:
+            print(f"⚠️ Keine Signatur vorhanden, verwende nur Body")
+            body_html_final = body_html_escaped
         
         body_html_final = (
             "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
+            body_html_final +
             "</div>"
         )
 
-        # E-Mail erstellen
-        message = MIMEMultipart('mixed')
-        message['Subject'] = subject
-        message['From'] = f"HelpCare <{smtp_username}>"
-        message['To'] = to_email
-
-        # Für Befragungsbogen: BCC an alle Kooperationspartner
-        partners = Kooperationspartner.query.all()
-        bcc_emails = [partner.email for partner in partners if partner.email]
-        if bcc_emails:
-            message['Bcc'] = ', '.join(bcc_emails)
-            print(f"DEBUG: Sende Befragungsbogen per BCC an: {bcc_emails}")
-
-        # Text und HTML Versionen
+        # Text und HTML Versionen (für alle Empfänger - OHNE BCC-Info)
         text_part = MIMEText(body_text_final, 'plain', 'utf-8')
         html_part = MIMEText(body_html_final, 'html', 'utf-8')
         
@@ -910,34 +971,104 @@ def send_latest_befragungsbogen():
         alternative = MIMEMultipart('alternative')
         alternative.attach(text_part)
         alternative.attach(html_part)
-        message.attach(alternative)
         
-        # PDF-Anhang hinzufügen
+        # PDF-Daten vorbereiten
         if pdf_b64.startswith('data:application/pdf;base64,'):
-            pdf_b64 = pdf_b64.split(',', 1)[1]
-        
-        pdf_data = base64.b64decode(pdf_b64)
-        pdf_attachment = MIMEBase('application', 'pdf')
-        pdf_attachment.set_payload(pdf_data)
-        encoders.encode_base64(pdf_attachment)
-        pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
-        message.attach(pdf_attachment)
-
-        # SMTP-Verbindung aufbauen und E-Mail senden
-        if smtp_use_ssl:
-            # SSL-Verbindung (Port 465)
-            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
-                server.login(smtp_username, smtp_password)
-                server.send_message(message)
+            pdf_b64_clean = pdf_b64.split(',', 1)[1]
         else:
-            # STARTTLS-Verbindung (Port 587)
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
+            pdf_b64_clean = pdf_b64
+        pdf_data = base64.b64decode(pdf_b64_clean)
+        
+        # Für Befragungsbogen: Separate E-Mails senden
+        if bcc_emails:
+            # 1. E-Mail an team@helpcare.de MIT Partner-Liste (intern)
+            bcc_info_text = f"\n\n---\nDiese E-Mail wurde an folgende Kooperationspartner gesendet:\n" + "\n".join(f"  • {email}" for email in bcc_emails)
+            bcc_info_html = f"<br><br><hr style='border: none; border-top: 1px solid #ddd; margin: 20px 0;'><p style='color: #666; font-size: 12px;'>Diese E-Mail wurde an folgende Kooperationspartner gesendet:</p><ul style='color: #666; font-size: 12px; margin: 10px 0; padding-left: 20px;'>" + "".join(f"<li>{email}</li>" for email in bcc_emails) + "</ul>"
+
+            body_team_text = body_text_final + bcc_info_text
+            # Hinweisblock nur EINMAL am Ende anhängen, nicht per replace auf alle </div>
+            body_team_html = body_html_final + bcc_info_html
+            
+            text_part_team = MIMEText(body_team_text, 'plain', 'utf-8')
+            html_part_team = MIMEText(body_team_html, 'html', 'utf-8')
+            
+            alternative_team = MIMEMultipart('alternative')
+            alternative_team.attach(text_part_team)
+            alternative_team.attach(html_part_team)
+            
+            message_team = MIMEMultipart('mixed')
+            message_team['Subject'] = subject
+            message_team['From'] = f"HelpCare <{smtp_username}>"
+            message_team['To'] = actual_to_email
+            # KEIN BCC-Feld - nur interne E-Mail an Team
+            message_team.attach(alternative_team)
+            
+            pdf_attachment_team = MIMEBase('application', 'pdf')
+            pdf_attachment_team.set_payload(pdf_data)
+            encoders.encode_base64(pdf_attachment_team)
+            pdf_attachment_team.add_header('Content-Disposition', f'attachment; filename={filename}')
+            message_team.attach(pdf_attachment_team)
+            
+            # SMTP-Verbindung einmal öffnen für alle E-Mails
+            if smtp_use_ssl:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+                server.login(smtp_username, smtp_password)
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port)
                 if smtp_use_tls:
                     server.starttls()
                 server.login(smtp_username, smtp_password)
-                server.send_message(message)
-        
-        print(f"✅ E-Mail erfolgreich über SMTP versendet an {to_email}")
+            
+            # Team-E-Mail senden
+            server.send_message(message_team)
+            print(f"✅ E-Mail an {actual_to_email} gesendet (mit Liste der {len(bcc_emails)} Partner)")
+            
+            # 2. Separate E-Mails an jeden Partner (ohne BCC-Info, jeder sieht nur seine eigene)
+            for partner_email in bcc_emails:
+                message_partner = MIMEMultipart('mixed')
+                message_partner['Subject'] = subject
+                message_partner['From'] = f"HelpCare <{smtp_username}>"
+                message_partner['To'] = partner_email
+                # KEIN BCC-Feld - jeder Partner bekommt seine eigene E-Mail
+                message_partner.attach(alternative)  # Normale Body ohne BCC-Info
+                
+                pdf_attachment_partner = MIMEBase('application', 'pdf')
+                pdf_attachment_partner.set_payload(pdf_data)
+                encoders.encode_base64(pdf_attachment_partner)
+                pdf_attachment_partner.add_header('Content-Disposition', f'attachment; filename={filename}')
+                message_partner.attach(pdf_attachment_partner)
+                
+                server.send_message(message_partner)
+                print(f"✅ E-Mail an Kooperationspartner {partner_email} gesendet")
+            
+            server.quit()
+            print(f"✅ Insgesamt {len(bcc_emails) + 1} E-Mails gesendet (1 an Team, {len(bcc_emails)} an Partner)")
+        else:
+            # Normale E-Mail (keine Partner)
+            message['To'] = actual_to_email
+            message.attach(alternative)
+            
+            pdf_attachment = MIMEBase('application', 'pdf')
+            pdf_attachment.set_payload(pdf_data)
+            encoders.encode_base64(pdf_attachment)
+            pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
+            message.attach(pdf_attachment)
+
+            # SMTP-Verbindung aufbauen und E-Mail senden
+            if smtp_use_ssl:
+                # SSL-Verbindung (Port 465)
+                with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(message)
+            else:
+                # STARTTLS-Verbindung (Port 587)
+                with smtplib.SMTP(smtp_server, smtp_port) as server:
+                    if smtp_use_tls:
+                        server.starttls()
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(message)
+            
+            print(f"✅ E-Mail erfolgreich über SMTP versendet an {actual_to_email}")
         
         # Kunde automatisch speichern mit Befragungsbogen-Daten
         questionnaire_data = {
@@ -947,7 +1078,9 @@ def send_latest_befragungsbogen():
             'lastName': data.get('lastName'),
             'sms_name': data.get('sms_name'),
             'sms_number': data.get('sms_number'),
-            'sent_at': datetime.datetime.utcnow().isoformat()
+            'sent_at': datetime.datetime.utcnow().isoformat(),
+            # In diesem Flow geht der Fragebogen IMMER an alle Partner, daher speichern wir diese explizit
+            'bcc_recipients': bcc_emails,
         }
         print(f"DEBUG: Speichere Befragungsbogen-Daten für {to_email}: {questionnaire_data}")
         customer = save_customer_from_email(to_email, questionnaire_data=questionnaire_data)
@@ -1419,9 +1552,9 @@ def send_befragungsbogen_filled():
     try:
         subject = payload.get('subject') or "Befragungsbogen"
         body = payload.get('body') or (
-            "Hallo,\n\n" 
-            "anbei befindet sich der Befragungsbogen.\n\n"
-            "Mit besten Grüßen"
+            "Sehr geehrte Damen und Herren,\n\n"
+            "anbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\n"
+            "Viele Grüße"
         )
         
         # SMTP-Konfiguration aus Umgebungsvariablen
@@ -1435,37 +1568,19 @@ def send_befragungsbogen_filled():
         if not smtp_username or not smtp_password:
             return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
 
-        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        # Signatur für SMTP-Absender abrufen, falls Postfach hinterlegt
+        # Versuche zuerst mit smtp_username, dann mit 'team@helpcare.de' als Fallback
         signature = get_signature_for_email(smtp_username)
+        if not signature and smtp_username != 'team@helpcare.de':
+            print(f"⚠️ Signatur nicht für {smtp_username} gefunden, versuche team@helpcare.de")
+            signature = get_signature_for_email('team@helpcare.de')
         newline = '\n'
         
-        # Prepare text and HTML bodies mit Signatur
-        body_text_final = body
-        body_html_final = body.replace(newline, '<br>')
-        
-        if signature:
-            # Für Plain-Text: HTML-Tags entfernen
-            import re
-            from html import unescape
-            signature_text = re.sub(r'<[^>]+>', '', signature)
-            signature_text = unescape(signature_text)
-            signature_text = signature_text.replace(newline, ' ').strip()
-            body_text_final = f"{body}{newline}{newline}{signature_text}"
-            # Für HTML: Signatur direkt anhängen
-            body_html_final = f"{body.replace(newline, '<br>')}<br><br>{signature}"
-        
-        body_html_final = (
-            "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
-            "</div>"
-        )
-
         # E-Mail erstellen
         message = MIMEMultipart('mixed')
         message['Subject'] = subject
         message['From'] = f"HelpCare <{smtp_username}>"
-        message['To'] = to_email
-
+        
         # Für Befragungsbogen: BCC an ausgewählte Kooperationspartner
         # Prüfe ob Partner explizit übergeben wurden
         partners_data = payload.get('partners', [])
@@ -1477,11 +1592,39 @@ def send_befragungsbogen_filled():
             partners = Kooperationspartner.query.all()
             bcc_emails = [partner.email for partner in partners if partner.email]
         
-        if bcc_emails:
-            message['Bcc'] = ', '.join(bcc_emails)
-            print(f"DEBUG: Sende Befragungsbogen per BCC an: {bcc_emails}")
+        # Für Befragungsbogen: An team@helpcare.de statt befragungsbogen@helpcare.de senden
+        if to_email == 'befragungsbogen@helpcare.de':
+            actual_to_email = 'team@helpcare.de'
+        else:
+            actual_to_email = to_email
+        
+        # Prepare text and HTML bodies mit Signatur (OHNE BCC-Info)
+        body_text_final = body
+        body_html_final = body.replace(newline, '<br>')
+        
+        # Body escapen (bevor Signatur hinzugefügt wird)
+        body_html_escaped = body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        if signature:
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text_final = f"{body}{newline}{newline}{signature_text}"
+            # Für HTML: Signatur nach dem Escaping hinzufügen (Signatur ist bereits HTML)
+            body_html_final = f"{body_html_escaped}<br><br>{signature}"
+        else:
+            body_html_final = body_html_escaped
+        
+        body_html_final = (
+            "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
+            body_html_final +
+            "</div>"
+        )
 
-        # Text und HTML Versionen
+        # Text und HTML Versionen (für alle Empfänger - OHNE BCC-Info)
         text_part = MIMEText(body_text_final, 'plain', 'utf-8')
         html_part = MIMEText(body_html_final, 'html', 'utf-8')
         
@@ -1489,31 +1632,100 @@ def send_befragungsbogen_filled():
         alternative = MIMEMultipart('alternative')
         alternative.attach(text_part)
         alternative.attach(html_part)
-        message.attach(alternative)
         
-        # PDF-Anhang hinzufügen
+        # PDF-Daten vorbereiten
         pdf_data = base64.b64decode(pdf_b64)
-        pdf_attachment = MIMEBase('application', 'pdf')
-        pdf_attachment.set_payload(pdf_data)
-        encoders.encode_base64(pdf_attachment)
-        pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
-        message.attach(pdf_attachment)
+        
+        # Für Befragungsbogen: Separate E-Mails senden
+        if bcc_emails:
+            # 1. E-Mail an team@helpcare.de MIT Partner-Liste (intern)
+            bcc_info_text = f"\n\n---\nDiese E-Mail wurde an folgende Kooperationspartner gesendet:\n" + "\n".join(f"  • {email}" for email in bcc_emails)
+            bcc_info_html = f"<br><br><hr style='border: none; border-top: 1px solid #ddd; margin: 20px 0;'><p style='color: #666; font-size: 12px;'>Diese E-Mail wurde an folgende Kooperationspartner gesendet:</p><ul style='color: #666; font-size: 12px; margin: 10px 0; padding-left: 20px;'>" + "".join(f"<li>{email}</li>" for email in bcc_emails) + "</ul>"
 
-        # SMTP-Verbindung aufbauen und E-Mail senden
-        if smtp_use_ssl:
-            # SSL-Verbindung (Port 465)
-            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            body_team_text = body_text_final + bcc_info_text
+            # Hinweisblock nur EINMAL am Ende anhängen, nicht per replace auf alle </div>
+            body_team_html = body_html_final + bcc_info_html
+            
+            text_part_team = MIMEText(body_team_text, 'plain', 'utf-8')
+            html_part_team = MIMEText(body_team_html, 'html', 'utf-8')
+            
+            alternative_team = MIMEMultipart('alternative')
+            alternative_team.attach(text_part_team)
+            alternative_team.attach(html_part_team)
+            
+            message_team = MIMEMultipart('mixed')
+            message_team['Subject'] = subject
+            message_team['From'] = f"HelpCare <{smtp_username}>"
+            message_team['To'] = actual_to_email
+            # KEIN BCC-Feld - nur interne E-Mail an Team
+            message_team.attach(alternative_team)
+            
+            pdf_attachment_team = MIMEBase('application', 'pdf')
+            pdf_attachment_team.set_payload(pdf_data)
+            encoders.encode_base64(pdf_attachment_team)
+            pdf_attachment_team.add_header('Content-Disposition', f'attachment; filename={filename}')
+            message_team.attach(pdf_attachment_team)
+            
+            # SMTP-Verbindung einmal öffnen für alle E-Mails
+            if smtp_use_ssl:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
                 server.login(smtp_username, smtp_password)
-                server.send_message(message)
-        else:
-            # STARTTLS-Verbindung (Port 587)
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port)
                 if smtp_use_tls:
                     server.starttls()
                 server.login(smtp_username, smtp_password)
-                server.send_message(message)
-        
-        print(f"✅ E-Mail erfolgreich über SMTP versendet an {to_email}")
+            
+            # Team-E-Mail senden
+            server.send_message(message_team)
+            print(f"✅ E-Mail an {actual_to_email} gesendet (mit Liste der {len(bcc_emails)} Partner)")
+            
+            # 2. Separate E-Mails an jeden Partner (ohne BCC-Info, jeder sieht nur seine eigene)
+            for partner_email in bcc_emails:
+                message_partner = MIMEMultipart('mixed')
+                message_partner['Subject'] = subject
+                message_partner['From'] = f"HelpCare <{smtp_username}>"
+                message_partner['To'] = partner_email
+                # KEIN BCC-Feld - jeder Partner bekommt seine eigene E-Mail
+                message_partner.attach(alternative)  # Normale Body ohne BCC-Info
+                
+                pdf_attachment_partner = MIMEBase('application', 'pdf')
+                pdf_attachment_partner.set_payload(pdf_data)
+                encoders.encode_base64(pdf_attachment_partner)
+                pdf_attachment_partner.add_header('Content-Disposition', f'attachment; filename={filename}')
+                message_partner.attach(pdf_attachment_partner)
+                
+                server.send_message(message_partner)
+                print(f"✅ E-Mail an Kooperationspartner {partner_email} gesendet")
+            
+            server.quit()
+            print(f"✅ Insgesamt {len(bcc_emails) + 1} E-Mails gesendet (1 an Team, {len(bcc_emails)} an Partner)")
+        else:
+            # Normale E-Mail (keine Partner)
+            message['To'] = actual_to_email
+            message.attach(alternative)
+            
+            pdf_attachment = MIMEBase('application', 'pdf')
+            pdf_attachment.set_payload(pdf_data)
+            encoders.encode_base64(pdf_attachment)
+            pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
+            message.attach(pdf_attachment)
+
+            # SMTP-Verbindung aufbauen und E-Mail senden
+            if smtp_use_ssl:
+                # SSL-Verbindung (Port 465)
+                with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(message)
+            else:
+                # STARTTLS-Verbindung (Port 587)
+                with smtplib.SMTP(smtp_server, smtp_port) as server:
+                    if smtp_use_tls:
+                        server.starttls()
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(message)
+            
+            print(f"✅ E-Mail erfolgreich über SMTP versendet an {actual_to_email}")
         
         # Kunde automatisch speichern mit Befragungsbogen-Daten (inkl. ausgefüllte Felder)
         questionnaire_data = {
@@ -2233,16 +2445,50 @@ def _generate_dienstleistungsvertrag_pdf_from_html(contract, html_content):
 def get_signature_for_email(email_address, username=None):
     """Ruft die Signatur für eine E-Mail-Adresse ab, falls ein Postfach dafür hinterlegt ist"""
     try:
-        if username:
-            cred = ExchangeCredential.query.filter_by(email=email_address, username=username).first()
-        else:
-            # Suche nach E-Mail-Adresse, unabhängig vom Benutzer
-            cred = ExchangeCredential.query.filter_by(email=email_address).first()
+        # Normalisiere E-Mail-Adresse (lowercase)
+        email_lower = email_address.lower().strip()
         
-        if cred and cred.signature:
-            return cred.signature
+        if username:
+            # Suche case-insensitive mit username
+            creds = ExchangeCredential.query.filter(
+                db.func.lower(ExchangeCredential.email) == email_lower,
+                ExchangeCredential.username == username
+            ).all()
+        else:
+            # Suche nach E-Mail-Adresse, unabhängig vom Benutzer, case-insensitive
+            creds = ExchangeCredential.query.filter(
+                db.func.lower(ExchangeCredential.email) == email_lower
+            ).all()
+        
+        if creds:
+            # Wenn mehrere Credentials gefunden, bevorzuge die mit Signatur
+            cred_with_signature = None
+            for cred in creds:
+                if cred.signature and cred.signature.strip():
+                    cred_with_signature = cred
+                    break
+            
+            # Falls keine mit Signatur gefunden, nimm die erste
+            if not cred_with_signature:
+                cred_with_signature = creds[0]
+            
+            print(f"✅ ExchangeCredential gefunden für {email_address}: ID={cred_with_signature.id}, signature vorhanden={bool(cred_with_signature.signature)}")
+            if cred_with_signature.signature and cred_with_signature.signature.strip():
+                print(f"✅ Signatur gefunden (Länge: {len(cred_with_signature.signature)} Zeichen)")
+                return cred_with_signature.signature
+            else:
+                print(f"⚠️ ExchangeCredential gefunden, aber keine Signatur vorhanden")
+        else:
+            print(f"⚠️ Kein ExchangeCredential gefunden für E-Mail: {email_address}")
+            # Debug: Zeige alle vorhandenen E-Mail-Adressen
+            all_creds = ExchangeCredential.query.all()
+            if all_creds:
+                emails = [c.email for c in all_creds]
+                print(f"   Verfügbare E-Mail-Adressen in DB: {emails}")
     except Exception as e:
         print(f"⚠️ Fehler beim Abrufen der Signatur für {email_address}: {e}")
+        import traceback
+        traceback.print_exc()
     return None
 
 # 📧 E-Mail-Antwort senden
@@ -2422,16 +2668,19 @@ def send_offer():
         form_fields = data.get('form_fields', {})
         customer_id = form_fields.get('kunden_id', '')
         if customer_id:
+            # Betreff um Kunden-ID ergänzen, damit Partner die E-Mail zuordnen können
+            if f"{customer_id}" not in subject:
+                subject = f"Bedarfsfragebogen – Kunden-ID: {customer_id}"
             body = data.get('body') or (
-                f"Hallo,\n\n"
-                f"anbei befindet sich der Befragungsbogen für Kunden-ID: {customer_id}\n\n"
-                f"Mit besten Grüßen"
+                "Sehr geehrte Damen und Herren,\n\n"
+                f"anbei finden Sie den Bedarfsfragebogen eines neuen Kunden (Kunden-ID: {customer_id}).\n\n"
+                "Viele Grüße"
             )
         else:
             body = data.get('body') or (
-                "Hallo,\n\n" 
-                "anbei befindet sich der Befragungsbogen.\n\n"
-                "Mit besten Grüßen"
+                "Sehr geehrte Damen und Herren,\n\n"
+                "anbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\n"
+                "Viele Grüße"
             )
     else:
         body = data.get('body') or (
@@ -2456,12 +2705,15 @@ def send_offer():
         'befragungsbogen' in body.lower()
     )
     
-    # Für Befragungsbogen: Dateiname ändern
+    # Für Befragungsbogen: Dateiname und Betreff anpassen (inkl. Kunden-ID)
     if is_questionnaire:
         form_fields = data.get('form_fields', {})
         customer_id = form_fields.get('kunden_id', '')
         if customer_id:
             filename = f"Bedarfsfragebogen_{customer_id}.pdf"
+            # Falls der Betreff noch keine Kunden-ID enthält, ergänzen
+            if f"{customer_id}" not in subject:
+                subject = f"Bedarfsfragebogen – Kunden-ID: {customer_id}"
         else:
             filename = "Bedarfsfragebogen.pdf"
 
@@ -2477,38 +2729,26 @@ def send_offer():
         return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
 
     try:
-        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        # Signatur für SMTP-Absender abrufen, falls Postfach hinterlegt
+        # Versuche zuerst mit smtp_username, dann mit 'team@helpcare.de' als Fallback
         signature = get_signature_for_email(smtp_username)
+        if not signature and smtp_username != 'team@helpcare.de':
+            print(f"⚠️ Signatur nicht für {smtp_username} gefunden, versuche team@helpcare.de")
+            signature = get_signature_for_email('team@helpcare.de')
+        print(f"🔍 Signatur-Abruf für {smtp_username}: {'✅ gefunden' if signature else '❌ nicht gefunden'}")
+        if signature:
+            print(f"✅ Signatur gefunden (Länge: {len(signature)} Zeichen)")
+        else:
+            print(f"❌ WICHTIG: Keine Signatur gefunden! Bitte prüfen Sie, ob für {smtp_username} oder team@helpcare.de eine Signatur in der Datenbank gespeichert ist.")
         newline = '\n'
         
-        # Prepare text and HTML bodies mit Signatur
-        body_text_final = body
-        body_html_final = body.replace(newline, '<br>')
-        
-        if signature:
-            # Für Plain-Text: HTML-Tags entfernen
-            import re
-            from html import unescape
-            signature_text = re.sub(r'<[^>]+>', '', signature)
-            signature_text = unescape(signature_text)
-            signature_text = signature_text.replace(newline, ' ').strip()
-            body_text_final = f"{body}{newline}{newline}{signature_text}"
-            # Für HTML: Signatur direkt anhängen
-            body_html_final = f"{body.replace(newline, '<br>')}<br><br>{signature}"
-        
-        body_html_final = (
-            "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            body_html_final +
-            "</div>"
-        )
-
         # E-Mail erstellen
         message = MIMEMultipart('mixed')
         message['Subject'] = subject
         message['From'] = f"HelpCare <{smtp_username}>"
-        message['To'] = to_email
         
         # Für Befragungsbogen: BCC an ausgewählte Kooperationspartner
+        questionnaire_bcc_emails = []
         if is_questionnaire:
             # Prüfe ob Partner explizit übergeben wurden
             partners_data = data.get('partners', [])
@@ -2521,45 +2761,166 @@ def send_offer():
                 bcc_emails = [partner.email for partner in partners if partner.email]
             
             if bcc_emails:
-                message['Bcc'] = ', '.join(bcc_emails)
-                print(f"DEBUG: Sende Befragungsbogen per BCC an: {bcc_emails}")
+                questionnaire_bcc_emails = bcc_emails
+        
+        # Für Befragungsbogen: An team@helpcare.de statt befragungsbogen@helpcare.de senden
+        if is_questionnaire and to_email == 'befragungsbogen@helpcare.de':
+            actual_to_email = 'team@helpcare.de'
+        else:
+            actual_to_email = to_email
+        
+        # Prepare text and HTML bodies mit Signatur (OHNE BCC-Info für alle)
+        body_text_final = body
+        body_html_final = body.replace(newline, '<br>')
+        
+        if signature:
+            # Für Plain-Text: HTML-Tags entfernen
+            import re
+            from html import unescape
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text_final = f"{body}{newline}{newline}{signature_text}"
+            # Für HTML: Signatur direkt anhängen
+            body_html_final = f"{body_html_final}<br><br>{signature}"
+            print(f"✅ Füge Signatur hinzu (Länge: {len(signature)} Zeichen)")
+        else:
+            print(f"⚠️ Keine Signatur vorhanden, verwende nur Body")
+        
+        body_html_final = (
+            "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
+            body_html_final +
+            "</div>"
+        )
+        
+        if signature:
+            print(f"✅ HTML-Body mit Signatur erstellt (Gesamtlänge: {len(body_html_final)} Zeichen)")
 
-        # Text und HTML Versionen
+        # Text und HTML Versionen (für alle Empfänger)
         text_part = MIMEText(body_text_final, 'plain', 'utf-8')
         html_part = MIMEText(body_html_final, 'html', 'utf-8')
         
-        # Alternative part (text + HTML)
+        # Alternative part (text + HTML) - enthält bereits die Signatur
         alternative = MIMEMultipart('alternative')
         alternative.attach(text_part)
         alternative.attach(html_part)
-        message.attach(alternative)
+        print(f"✅ Alternative MIME-Part erstellt (enthält Signatur: {bool(signature)})")
         
-        # PDF-Anhang hinzufügen
-        if pdf_b64.startswith('data:application/pdf;base64,'):
-            pdf_b64 = pdf_b64.split(',', 1)[1]
-        
-        pdf_data = base64.b64decode(pdf_b64)
-        pdf_attachment = MIMEBase('application', 'pdf')
-        pdf_attachment.set_payload(pdf_data)
-        encoders.encode_base64(pdf_attachment)
-        pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
-        message.attach(pdf_attachment)
+        # Für Befragungsbogen: Separate E-Mails senden
+        # 1. E-Mail an team@helpcare.de MIT BCC-Liste (intern, OHNE BCC-Feld)
+        # 2. Separate E-Mails an jeden Kooperationspartner (jeder sieht nur seine eigene E-Mail)
+        if is_questionnaire and questionnaire_bcc_emails:
+            # PDF-Daten vorbereiten
+            if pdf_b64.startswith('data:application/pdf;base64,'):
+                pdf_b64_clean = pdf_b64.split(',', 1)[1]
+            else:
+                pdf_b64_clean = pdf_b64
+            pdf_data = base64.b64decode(pdf_b64_clean)
+            
+            # 1. E-Mail an team@helpcare.de MIT BCC-Liste (intern)
+            bcc_info_text = f"\n\n---\nDiese E-Mail wurde an folgende Kooperationspartner gesendet:\n" + "\n".join(f"  • {email}" for email in questionnaire_bcc_emails)
+            bcc_info_html = f"<br><br><hr style='border: none; border-top: 1px solid #ddd; margin: 20px 0;'><p style='color: #666; font-size: 12px;'>Diese E-Mail wurde an folgende Kooperationspartner gesendet:</p><ul style='color: #666; font-size: 12px; margin: 10px 0; padding-left: 20px;'>" + "".join(f"<li>{email}</li>" for email in questionnaire_bcc_emails) + "</ul>"
 
-        # SMTP-Verbindung aufbauen und E-Mail senden
-        if smtp_use_ssl:
-            # SSL-Verbindung (Port 465)
-            with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            body_team_text = body_text_final + bcc_info_text
+            # Hinweisblock nur EINMAL am Ende anhängen, nicht per replace auf alle </div>
+            body_team_html = body_html_final + bcc_info_html
+            
+            text_part_team = MIMEText(body_team_text, 'plain', 'utf-8')
+            html_part_team = MIMEText(body_team_html, 'html', 'utf-8')
+            
+            alternative_team = MIMEMultipart('alternative')
+            alternative_team.attach(text_part_team)
+            alternative_team.attach(html_part_team)
+            
+            message_team = MIMEMultipart('mixed')
+            message_team['Subject'] = subject
+            message_team['From'] = f"HelpCare <{smtp_username}>"
+            message_team['To'] = actual_to_email
+            # KEIN BCC-Feld - nur interne E-Mail an Team
+            message_team.attach(alternative_team)
+            
+            pdf_attachment_team = MIMEBase('application', 'pdf')
+            pdf_attachment_team.set_payload(pdf_data)
+            encoders.encode_base64(pdf_attachment_team)
+            pdf_attachment_team.add_header('Content-Disposition', f'attachment; filename={filename}')
+            message_team.attach(pdf_attachment_team)
+            
+            # 2. Separate E-Mails an jeden Kooperationspartner (jeder sieht nur seine eigene)
+            # SMTP-Verbindung einmal öffnen für alle E-Mails
+            if smtp_use_ssl:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
                 server.login(smtp_username, smtp_password)
-                server.send_message(message)
-        else:
-            # STARTTLS-Verbindung (Port 587)
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port)
                 if smtp_use_tls:
                     server.starttls()
                 server.login(smtp_username, smtp_password)
-                server.send_message(message)
+            
+            # Team-E-Mail senden
+            server.send_message(message_team)
+            print(f"✅ E-Mail an {actual_to_email} gesendet (mit Liste der {len(questionnaire_bcc_emails)} Partner)")
+            
+            # Separate E-Mails an jeden Partner senden (ohne BCC-Info, jeder sieht nur seine eigene)
+            for partner_email in questionnaire_bcc_emails:
+                message_partner = MIMEMultipart('mixed')
+                message_partner['Subject'] = subject
+                message_partner['From'] = f"HelpCare <{smtp_username}>"
+                message_partner['To'] = partner_email
+                # KEIN BCC-Feld - jeder Partner bekommt seine eigene E-Mail
+                message_partner.attach(alternative)  # Normale Body ohne BCC-Info
+                
+                pdf_attachment_partner = MIMEBase('application', 'pdf')
+                pdf_attachment_partner.set_payload(pdf_data)
+                encoders.encode_base64(pdf_attachment_partner)
+                pdf_attachment_partner.add_header('Content-Disposition', f'attachment; filename={filename}')
+                message_partner.attach(pdf_attachment_partner)
+                
+                server.send_message(message_partner)
+                print(f"✅ E-Mail an Kooperationspartner {partner_email} gesendet")
+            
+            server.quit()
+            
+            print(f"✅ Insgesamt {len(questionnaire_bcc_emails) + 1} E-Mails gesendet (1 an Team, {len(questionnaire_bcc_emails)} an Partner)")
+            # Für Befragungsbogen: Keine weitere E-Mail senden, da bereits gesendet
+            return_early = True
+        else:
+            # Normale E-Mail (nicht Befragungsbogen oder keine BCC)
+            message['To'] = actual_to_email
+            if is_questionnaire and questionnaire_bcc_emails:
+                message['Bcc'] = ', '.join(questionnaire_bcc_emails)
+            message.attach(alternative)
+            return_early = False
         
-        print(f"✅ E-Mail erfolgreich über SMTP versendet an {to_email}")
+        # Wenn bereits gesendet (Befragungsbogen mit BCC), überspringe normalen Versand
+        if not return_early:
+            # PDF-Anhang hinzufügen
+            if pdf_b64.startswith('data:application/pdf;base64,'):
+                pdf_b64_clean = pdf_b64.split(',', 1)[1]
+            else:
+                pdf_b64_clean = pdf_b64
+            
+            pdf_data = base64.b64decode(pdf_b64_clean)
+            pdf_attachment = MIMEBase('application', 'pdf')
+            pdf_attachment.set_payload(pdf_data)
+            encoders.encode_base64(pdf_attachment)
+            pdf_attachment.add_header('Content-Disposition', f'attachment; filename={filename}')
+            message.attach(pdf_attachment)
+
+            # SMTP-Verbindung aufbauen und E-Mail senden
+            if smtp_use_ssl:
+                # SSL-Verbindung (Port 465)
+                with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(message)
+            else:
+                # STARTTLS-Verbindung (Port 587)
+                with smtplib.SMTP(smtp_server, smtp_port) as server:
+                    if smtp_use_tls:
+                        server.starttls()
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(message)
+            
+            print(f"✅ E-Mail erfolgreich über SMTP versendet an {actual_to_email}")
         
         # Automatisch Kunde speichern - unterscheide zwischen Angebot und Befragungsbogen
         customer_name = sms_name or name_full or None
@@ -2583,14 +2944,8 @@ def send_offer():
             }
             print(f"DEBUG: Erkenne Befragungsbogen - speichere questionnaire_data: {questionnaire_data}")
             
-            # Für Befragungsbogen: Speichere ohne spezifische E-Mail (da per BCC versendet)
-            # Lade alle Kooperationspartner für BCC
-            partners = Kooperationspartner.query.all()
-            bcc_emails = [partner.email for partner in partners]
-            print(f"DEBUG: BCC an Kooperationspartner: {bcc_emails}")
-            
-            # Speichere mit BCC-Information
-            questionnaire_data['bcc_recipients'] = bcc_emails
+            # Speichere die tatsächlich verwendeten BCC-Empfänger (nur die Partner, die den Fragebogen bekommen haben)
+            questionnaire_data['bcc_recipients'] = questionnaire_bcc_emails or []
             
             # Wenn eine Kunden-ID ausgewählt ist, Daten zu diesem Kunden hinzufügen
             if customer_id:
@@ -2604,13 +2959,13 @@ def send_offer():
                         print(f"DEBUG: Befragungsbogen-Daten zu bestehendem Kunden {customer_id} hinzugefügt")
                     else:
                         print(f"DEBUG: Kunde {customer_id} nicht gefunden, erstelle neuen Kunden")
-                        save_customer_from_email('befragungsbogen@helpcare.de', 'Befragungsbogen', questionnaire_data=questionnaire_data)
+                        save_customer_from_email('team@helpcare.de', 'Befragungsbogen', questionnaire_data=questionnaire_data)
                 except Exception as e:
                     print(f"DEBUG: Fehler beim Hinzufügen zu bestehendem Kunden: {e}")
-                    save_customer_from_email('befragungsbogen@helpcare.de', 'Befragungsbogen', questionnaire_data=questionnaire_data)
+                    save_customer_from_email('team@helpcare.de', 'Befragungsbogen', questionnaire_data=questionnaire_data)
             else:
                 # Kein Kunde ausgewählt - neuen Kunden erstellen
-                save_customer_from_email('befragungsbogen@helpcare.de', 'Befragungsbogen', questionnaire_data=questionnaire_data)
+                save_customer_from_email('team@helpcare.de', 'Befragungsbogen', questionnaire_data=questionnaire_data)
         else:
             # Angebot-Daten speichern (inkl. PDF)
             offer_data = {
@@ -2725,13 +3080,20 @@ def send_reminder():
         return jsonify({"error": "SMTP-Credentials nicht konfiguriert. Bitte SMTP_USERNAME und SMTP_PASSWORD in .env setzen."}), 400
     
     try:
-        # Signatur für team@helpcare.de abrufen, falls Postfach hinterlegt
+        # Signatur für SMTP-Absender abrufen, falls Postfach hinterlegt
+        # Versuche zuerst mit smtp_username, dann mit 'team@helpcare.de' als Fallback
         signature = get_signature_for_email(smtp_username)
+        if not signature and smtp_username != 'team@helpcare.de':
+            print(f"⚠️ Signatur nicht für {smtp_username} gefunden, versuche team@helpcare.de")
+            signature = get_signature_for_email('team@helpcare.de')
         newline = '\n'
         
         # Prepare email content
         body_text_final = body or "Hallo,\n\nhier ist eine Erinnerung von HelpCare.\n\nMit besten Grüßen\nTeam HelpCare"
         body_html_final = body_text_final.replace(newline, '<br>')
+        
+        # Body escapen (bevor Signatur hinzugefügt wird)
+        body_html_escaped = body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         
         if signature:
             # Für Plain-Text: HTML-Tags entfernen
@@ -2741,12 +3103,14 @@ def send_reminder():
             signature_text = unescape(signature_text)
             signature_text = signature_text.replace(newline, ' ').strip()
             body_text_final = f"{body_text_final}{newline}{newline}{signature_text}"
-            # Für HTML: Signatur direkt anhängen
-            body_html_final = f"{body_html_final}<br><br>{signature}"
+            # Für HTML: Signatur nach dem Escaping hinzufügen (Signatur ist bereits HTML)
+            body_html_final = f"{body_html_escaped}<br><br>{signature}"
+        else:
+            body_html_final = body_html_escaped
         
         body_html_final = (
             "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
-            body_html_final.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') +
+            body_html_final +
             "</div>"
         )
         
@@ -2975,18 +3339,113 @@ def react_team_note(note_id: int):
 @app.route('/api/customers', methods=['GET', 'POST'])
 def customers():
     if request.method == 'GET':
-        # Optionale Pagination (default: alle)
+        # Optionale Pagination (default: 50 pro Seite für bessere Performance)
         page = request.args.get('page', type=int, default=1)
-        per_page = request.args.get('per_page', type=int, default=1000)  # Groß genug für normale Nutzung
+        per_page = request.args.get('per_page', type=int, default=50)  # Optimiert für Performance
         
-        pagination = Customer.query.order_by(Customer.created_at.desc()).paginate(
-            page=page, per_page=per_page, error_out=False
-        )
+        # Optional: Suchfilter
+        search = request.args.get('search', '').strip()
+        query = Customer.query
+        
+        if search:
+            # Suche in Name, Email, Company
+            search_filter = f'%{search}%'
+            query = query.filter(
+                db.or_(
+                    Customer.name.ilike(search_filter),
+                    Customer.email.ilike(search_filter),
+                    Customer.company.ilike(search_filter)
+                )
+            )
+        
+        # Performance-Optimierung: JSON-Spalten nur laden wenn Details benötigt werden
+        include_details = request.args.get('include_details', 'false').lower() == 'true'
+        
+        if include_details:
+            # Vollständige Abfrage mit allen Spalten (für Detailansicht)
+            pagination = query.order_by(Customer.created_at.desc()).paginate(
+                page=page, per_page=per_page, error_out=False
+            )
+            items = []
+            for customer in pagination.items:
+                item = customer.to_dict()
+                items.append(item)
+        else:
+            # Optimierte Abfrage: JSON-Spalten AUSLASSEN für bessere Performance
+            from sqlalchemy import select
+            # Nur die Spalten laden, die für die Liste benötigt werden
+            columns = [
+                Customer.id,
+                Customer.name,
+                Customer.email,
+                Customer.phone,
+                Customer.mobile_phone,
+                Customer.company,
+                Customer.created_at,
+                Customer.last_contact,
+                Customer.status,
+                Customer.street_address,
+                Customer.postal_code,
+                Customer.city,
+                Customer.contract_number,
+                Customer.monthly_rate,
+                Customer.daily_rate,
+                Customer.notes
+            ]
+            
+            # Optimierte COUNT-Query: Verwende func.count() direkt auf gefilterter Query
+            # Dies ist effizienter als query.count() bei großen Tabellen
+            from sqlalchemy import func
+            # COUNT auf Basis der bereits gefilterten Query
+            total = query.with_entities(func.count(Customer.id)).scalar()
+            pages = (total + per_page - 1) // per_page if total > 0 else 1
+            
+            # Lade nur die benötigten Spalten (OHNE JSON-Felder!)
+            offset = (page - 1) * per_page
+            customers = query.with_entities(*columns)\
+                .order_by(Customer.created_at.desc())\
+                .offset(offset)\
+                .limit(per_page)\
+                .all()
+            
+            items = []
+            for customer in customers:
+                item = {
+                    'id': customer.id,
+                    'name': customer.name,
+                    'email': customer.email,
+                    'phone': customer.phone,
+                    'mobile_phone': customer.mobile_phone,
+                    'company': customer.company,
+                    'created_at': customer.created_at.isoformat() if customer.created_at else None,
+                    'last_contact': customer.last_contact.isoformat() if customer.last_contact else None,
+                    'status': customer.status,
+                    'street_address': customer.street_address,
+                    'postal_code': customer.postal_code,
+                    'city': customer.city,
+                    'contract_number': customer.contract_number,
+                    'monthly_rate': customer.monthly_rate,
+                    'daily_rate': customer.daily_rate,
+                    'notes': customer.notes
+                }
+                items.append(item)
+            
+            # Pagination-Objekt für Kompatibilität
+            class PaginationObj:
+                def __init__(self, items, total, pages, page):
+                    self.items = items
+                    self.total = total
+                    self.pages = pages
+                    self.page = page
+            
+            pagination = PaginationObj(items, total, pages, page)
+        
         return jsonify({
-            'items': [customer.to_dict() for customer in pagination.items],
+            'items': items,
             'total': pagination.total,
             'pages': pagination.pages,
-            'page': page
+            'page': pagination.page,
+            'per_page': per_page
         })
     
     elif request.method == 'POST':
@@ -3023,6 +3482,7 @@ def customer_detail(customer_id):
     customer = Customer.query.get_or_404(customer_id)
     
     if request.method == 'GET':
+        # Detail-Ansicht: Immer alle Daten laden (nur EIN Kunde)
         return jsonify(customer.to_dict())
     
     elif request.method == 'PUT':
@@ -3049,9 +3509,108 @@ def customer_detail(customer_id):
         return jsonify(customer.to_dict())
     
     elif request.method == 'DELETE':
-        db.session.delete(customer)
-        db.session.commit()
-        return jsonify({"success": True})
+        try:
+            # Zuerst alle verknüpften Dienstleistungsverträge löschen
+            from models import Dienstleistungsvertrag
+            contracts = Dienstleistungsvertrag.query.filter_by(customer_id=customer_id).all()
+            if contracts:
+                for contract in contracts:
+                    db.session.delete(contract)
+                # Verträge explizit committen, damit sie gelöscht sind, bevor der Kunde gelöscht wird
+                db.session.commit()
+            
+            # Jetzt kann der Kunde gelöscht werden
+            db.session.delete(customer)
+            db.session.commit()
+            return jsonify({"success": True})
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Fehler beim Löschen des Kunden {customer_id}: {e}")
+            return jsonify({"error": f"Fehler beim Löschen: {str(e)}"}), 500
+
+@app.route('/api/customers/<int:customer_id>/sms', methods=['POST'])
+def send_sms_to_customer(customer_id):
+    """Sendet eine SMS an einen Kunden über Linkmobility API"""
+    if "user" not in session:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+    
+    customer = Customer.query.get_or_404(customer_id)
+    data = request.get_json() or {}
+    
+    # SMS-Nachricht aus Request
+    message = data.get('message', '').strip()
+    if not message:
+        return jsonify({"error": "SMS-Nachricht darf nicht leer sein"}), 400
+    
+    # Telefonnummer aus Kunden-Daten (mobile_phone hat Priorität, sonst phone)
+    mobile_phone = customer.mobile_phone or customer.phone
+    if not mobile_phone:
+        return jsonify({"error": "Keine Mobiltelefonnummer für diesen Kunden hinterlegt"}), 400
+    
+    try:
+        # Linkmobility Konfiguration
+        linkmobility_token = os.getenv('LINKMOBILITY_TOKEN') or 'bb2d6280-fbfe-4b73-9421-b2ca7a76c896'
+        linkmobility_base_url = os.getenv('LINKMOBILITY_BASE_URL') or 'https://api.linkmobility.eu/rest/smsmessaging/simple'
+        
+        # E.164 Normalisierung (basierend auf dem PHP-Beispiel)
+        customer_number_clean = re.sub(r'\D+', '', mobile_phone)
+        
+        if customer_number_clean.startswith('00'):
+            customer_number_clean = customer_number_clean[2:]
+        if customer_number_clean.startswith('0'):
+            customer_number_clean = '49' + customer_number_clean[1:]
+        if not customer_number_clean.startswith('49'):
+            # Falls nicht mit 49 beginnt, könnte es bereits international sein oder anderer Ländercode
+            pass
+        
+        customer_sms_number = '+' + customer_number_clean
+        
+        # API-Parameter
+        params = {
+            'access_token': linkmobility_token,
+            'recipientAddressList': customer_sms_number,
+            'messageContent': message,
+        }
+        
+        # cURL-äquivalent mit requests
+        response = requests.post(
+            linkmobility_base_url,
+            data=params,
+            headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            # Erfolgreich versendet
+            print(f"✅ SMS erfolgreich versendet an {customer_sms_number}: HTTP {response.status_code} – Antwort: {response.text}")
+            return jsonify({
+                "success": True,
+                "message": "SMS erfolgreich versendet",
+                "recipient": customer_sms_number,
+                "response": response.text
+            })
+        else:
+            # Fehler beim Versand
+            error_msg = f"HTTP {response.status_code} – Antwort: {response.text}"
+            print(f"❌ Link Mobility SMS Fehler: {error_msg}")
+            return jsonify({
+                "error": f"SMS-Versand fehlgeschlagen: {error_msg}",
+                "status_code": response.status_code,
+                "response": response.text
+            }), 500
+            
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        print(f"❌ Link Mobility cURL/Request Fehler: {error_msg}")
+        return jsonify({
+            "error": f"SMS-Versand fehlgeschlagen: {error_msg}"
+        }), 500
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Unerwarteter Fehler beim SMS-Versand: {error_msg}")
+        return jsonify({
+            "error": f"Unerwarteter Fehler: {error_msg}"
+        }), 500
 
 # Automatisches Speichern von Kunden beim Angebot versenden
 def save_customer_from_email(email_address, customer_name=None, offer_data=None, questionnaire_data=None):
@@ -3138,9 +3697,42 @@ def save_customer_from_email(email_address, customer_name=None, offer_data=None,
         customer.questionnaire_data_json = json.dumps(questionnaire_data)
         customer.add_contact_entry('questionnaire_sent', questionnaire_data)
     
-    db.session.add(customer)
-    db.session.commit()
-    return customer
+    try:
+        db.session.add(customer)
+        db.session.commit()
+        return customer
+    except Exception as e:
+        # Bei Fehler (z.B. Duplicate Key): Rollback und erneut versuchen
+        db.session.rollback()
+        print(f"DEBUG: Fehler beim Erstellen des Kunden, versuche erneut: {e}")
+        # Erneut prüfen ob Kunde inzwischen existiert (Race Condition)
+        try:
+            existing_customer = Customer.query.filter_by(email=email_address).first()
+            if existing_customer:
+                # Aktualisiere bestehenden Kunden
+                if offer_data:
+                    try:
+                        current_offer_data = json.loads(existing_customer.offer_data_json or '{}')
+                        current_offer_data.update(offer_data)
+                        existing_customer.offer_data_json = json.dumps(current_offer_data)
+                    except:
+                        existing_customer.offer_data_json = json.dumps(offer_data)
+                if questionnaire_data:
+                    try:
+                        current_questionnaire_data = json.loads(existing_customer.questionnaire_data_json or '{}')
+                        current_questionnaire_data.update(questionnaire_data)
+                        existing_customer.questionnaire_data_json = json.dumps(current_questionnaire_data)
+                    except:
+                        existing_customer.questionnaire_data_json = json.dumps(questionnaire_data)
+                existing_customer.last_contact = datetime.datetime.utcnow()
+                db.session.commit()
+                return existing_customer
+            else:
+                # Unerwarteter Fehler, erneut versuchen
+                raise
+        except Exception as e2:
+            print(f"DEBUG: Fehler beim Retry: {e2}")
+            raise
 
 # Befragungsbogen-Daten zu Kunde hinzufügen
 @app.route('/api/customers/<int:customer_id>/questionnaire', methods=['POST'])
@@ -4326,6 +4918,143 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
     return False, f"SMTP-Versand fehlgeschlagen: {smtp_error}"
     
 
+def _notify_other_partners_on_contract_completed(contract: Dienstleistungsvertrag):
+    """
+    Benachrichtigt alle Kooperationspartner, die den Bedarfsfragebogen für diesen Kunden erhalten haben,
+    sobald ein Dienstleistungsvertrag vollständig unterzeichnet ('completed') ist.
+    Der ausgewählte Vertragspartner selbst wird NICHT benachrichtigt.
+    Mehrfachversand wird über ein Flag in contract_data_json verhindert.
+    """
+    try:
+        # Sicherstellen, dass nur bei 'completed' Benachrichtigungen verschickt werden
+        if not contract or contract.status != 'completed':
+            return
+
+        # Vertragsdaten-JSON laden/initialisieren
+        try:
+            contract_data = json.loads(contract.contract_data_json or '{}')
+        except Exception:
+            contract_data = {}
+
+        # Wurde bereits benachrichtigt? -> dann nichts tun
+        if contract_data.get('partners_notified_on_completion'):
+            return
+
+        customer = Customer.query.get(contract.customer_id)
+        winner_partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+
+        if not customer:
+            return
+
+        # Fragebogen-Daten des Kunden laden
+        try:
+            questionnaire_data = json.loads(customer.questionnaire_data_json or '{}')
+        except Exception:
+            questionnaire_data = {}
+
+        bcc_recipients = questionnaire_data.get('bcc_recipients') or []
+        if not bcc_recipients:
+            # Keine bekannten Empfänger des Bedarfsfragebogens – nichts zu tun
+            return
+
+        # Alle Partner, die den Fragebogen erhalten haben
+        partners = Kooperationspartner.query.filter(Kooperationspartner.email.in_(bcc_recipients)).all()
+        if not partners:
+            return
+
+        winner_email = winner_partner.email if winner_partner and winner_partner.email else None
+        recipient_emails = [
+            p.email for p in partners
+            if p.email and p.email != winner_email
+        ]
+
+        if not recipient_emails:
+            return
+
+        # SMTP-Konfiguration wiederverwenden
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+        smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+        smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+        smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+
+        if not smtp_username or not smtp_password:
+            print("⚠️ SMTP-Credentials nicht konfiguriert – Partner-Benachrichtigungen werden übersprungen.")
+            return
+
+        subject = f"Auftrag besetzt – Kunden-ID: {customer.id}"
+        body_text = (
+            "Sehr geehrte Damen und Herren,\n\n"
+            f"der Auftrag mit der Kunden-ID: {customer.id} wurde soeben besetzt.\n\n"
+            "Viele Grüße\n"
+            "Ihr HelpCare-Team"
+        )
+        body_html = (
+            "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">"
+            "Sehr geehrte Damen und Herren,<br><br>"
+            f"der Auftrag mit der Kunden-ID: {customer.id} wurde soeben besetzt.<br><br>"
+            "Viele Grüße<br>"
+            "Ihr HelpCare-Team"
+            "</div>"
+        )
+
+        # Optional: Signatur für SMTP-Absender anhängen
+        try:
+            # Versuche zuerst smtp_username, dann 'team@helpcare.de' als Fallback
+            signature = get_signature_for_email(smtp_username)
+            if not signature and smtp_username != 'team@helpcare.de':
+                print(f"⚠️ Signatur nicht für {smtp_username} gefunden, versuche team@helpcare.de")
+                signature = get_signature_for_email('team@helpcare.de')
+        except Exception:
+            signature = None
+
+        if signature:
+            import re
+            from html import unescape
+            newline = '\n'
+            signature_text = re.sub(r'<[^>]+>', '', signature)
+            signature_text = unescape(signature_text)
+            signature_text = signature_text.replace(newline, ' ').strip()
+            body_text = f"{body_text}\n\n{signature_text}"
+            body_html = f"{body_html}<br><br>{signature}"
+
+        # Eine E-Mail pro Partner schicken (klare Zuordnung beim Partner)
+        for email_addr in recipient_emails:
+            try:
+                message = MIMEMultipart('alternative')
+                message['Subject'] = subject
+                message['From'] = f"HelpCare <{smtp_username}>"
+                message['To'] = email_addr
+
+                text_part = MIMEText(body_text, 'plain', 'utf-8')
+                html_part = MIMEText(body_html, 'html', 'utf-8')
+                message.attach(text_part)
+                message.attach(html_part)
+
+                if smtp_use_ssl:
+                    with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                        server.login(smtp_username, smtp_password)
+                        server.send_message(message)
+                else:
+                    with smtplib.SMTP(smtp_server, smtp_port) as server:
+                        if smtp_use_tls:
+                            server.starttls()
+                        server.login(smtp_username, smtp_password)
+                        server.send_message(message)
+
+                print(f"✅ Benachrichtigungs-E-Mail zum besetzten Auftrag an {email_addr} gesendet.")
+            except Exception as e:
+                print(f"❌ Fehler beim Senden der Benachrichtigungs-E-Mail an {email_addr}: {e}")
+
+        # Flag setzen, damit nicht mehrfach benachrichtigt wird
+        contract_data['partners_notified_on_completion'] = True
+        contract.contract_data_json = json.dumps(contract_data)
+    except Exception as e:
+        # Fehler dürfen den eigentlichen Signatur-Flow nicht blockieren
+        print(f"⚠️ Fehler bei Partner-Benachrichtigung nach Vertragsabschluss: {e}")
+    
+
 # Manuelle Status-Aktualisierung
 @app.route('/api/dienstleistungsvertraege/<int:contract_id>/check-status', methods=['POST'])
 def check_dienstleistungsvertrag_status(contract_id):
@@ -4345,6 +5074,8 @@ def check_dienstleistungsvertrag_status(contract_id):
                 signed_pdf_filename = create_signed_contract_pdf_complete(contract)
                 if signed_pdf_filename:
                     contract.signed_pdf_filename = signed_pdf_filename
+            # Partner über den besetzten Auftrag informieren
+            _notify_other_partners_on_contract_completed(contract)
             db.session.commit()
         elif contract.signature_data:
             contract.status = 'customer_signed'
@@ -5189,6 +5920,8 @@ def save_dienstleistungsvertrag_signature_customer(contract_id):
             signed_pdf_filename = create_signed_contract_pdf_complete(contract)
             if signed_pdf_filename:
                 contract.signed_pdf_filename = signed_pdf_filename
+            # Partner über den besetzten Auftrag informieren
+            _notify_other_partners_on_contract_completed(contract)
         else:
             # Nur Kunde hat signiert
             contract.status = 'customer_signed'
@@ -5223,6 +5956,8 @@ def save_dienstleistungsvertrag_signature_partner(contract_id):
             signed_pdf_filename = create_signed_contract_pdf_complete(contract)
             if signed_pdf_filename:
                 contract.signed_pdf_filename = signed_pdf_filename
+            # Partner über den besetzten Auftrag informieren
+            _notify_other_partners_on_contract_completed(contract)
         else:
             # Nur Partner hat signiert
             contract.status = 'partner_signed'

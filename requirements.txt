@@ -40,4 +40,13 @@ Werkzeug==3.1.3
 zipp==3.23.0
 pypdf==4.3.1
 docusign-esign==3.26.0
-weasyprint==62.3
+
+# WICHTIG: WeasyPrint + Abhängigkeiten kompatibel pinnen.
+# Der Fehler "'super' object has no attribute 'transform'"
+# entsteht durch eine inkompatible Kombination von
+# weasyprint/pydyf/cairo.
+#
+# Bewährte, stabile Kombi:
+weasyprint==53.3
+pydyf==0.11.0
+cairocffi==1.6.1

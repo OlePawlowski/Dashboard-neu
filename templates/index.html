@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="https://kit.fontawesome.com/a2e0f2ac1f.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
@@ -1617,13 +1616,12 @@
       <iframe id="befragungsbogen-frame" src="/befragungsbogen/2-personen" title="Befragungsbogen" style="width:100%;height:70vh;border:0;border-radius:12px;background:white;"></iframe>
       <form id="befragungsbogen-send-form" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="text" name="filename" placeholder="Dateiname (optional)" />
           <input type="text" name="subject" placeholder="E-Mail Betreff" style="min-width:200px;" />
           <textarea name="body" placeholder="E-Mail Beschreibung" style="min-width:300px;min-height:60px;resize:vertical;"></textarea>
         </div>
         <div id="befragungsbogen-partner-selection" style="margin-bottom: 0.5rem;">
           <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Kooperationspartner auswählen:</label>
-          <div id="befragungsbogen-partner-container" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: white;">
+          <div id="befragungsbogen-partner-container" style="max-height: 100px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: white;">
             <p>Lade Kooperationspartner...</p>
           </div>
         </div>
@@ -1863,7 +1861,7 @@
     formBF?.addEventListener('submit', async (e)=>{
       e.preventDefault();
       const fd = new FormData(formBF);
-      const filename = (fd.get('filename')||'Befragungsbogen.pdf').toString().trim() || 'Befragungsbogen.pdf';
+      const filename = 'Befragungsbogen.pdf';
       // Keine E-Mail-Eingabe mehr nötig - wird automatisch per BCC versendet
       try{
         // Verwende dieselbe PDF-Generierung wie der Download-Button
@@ -1922,7 +1920,7 @@
         
         // Verwende benutzerdefinierte Werte oder Fallback
         const finalSubject = customSubject || 'Befragungsbogen';
-        const finalBody = customBody || 'Hallo,\n\nanbei befindet sich der Befragungsbogen.\n\nMit besten Grüßen';
+        const finalBody = customBody || 'Sehr geehrte Damen und Herren,\n\nanbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\nViele Grüße';
         
         // Ausgewählte Partner sammeln
         const selectedPartners = [];
@@ -1948,7 +1946,7 @@
           method:'POST', 
           headers:{'Content-Type':'application/json'}, 
           body: JSON.stringify({ 
-            to: 'befragungsbogen@helpcare.de', // Dummy-E-Mail für Befragungsbogen
+            to: 'team@helpcare.de', // E-Mail an Team (BCC an Kooperationspartner wird automatisch hinzugefügt)
             filename, 
             pdf_base64: dataUrl,
             subject: finalSubject,
@@ -3067,10 +3065,20 @@
       window.currentCustomer = null;
 
       // Kunden laden
-      async function loadCustomers() {
+      let currentCustomerPage = 1;
+      let totalCustomerPages = 1;
+      
+      async function loadCustomers(page = 1, search = '') {
       try {
-        console.log('Lade Kunden...');
-        const res = await fetch('/api/customers');
+        console.log(`Lade Kunden (Seite ${page}${search ? ', Suche: ' + search : ''})...`);
+        const url = new URL('/api/customers', window.location.origin);
+        url.searchParams.set('page', page);
+        url.searchParams.set('per_page', '50'); // 50 Kunden pro Seite für bessere Performance
+        if (search) {
+          url.searchParams.set('search', search);
+        }
+        
+        const res = await fetch(url);
         console.log('Response status:', res.status);
         
         if (!res.ok) {
@@ -3080,8 +3088,11 @@
         const data = await res.json();
         // Unterstütze sowohl Array (alt) als auch Pagination-Objekt (neu)
         const customers = Array.isArray(data) ? data : (data.items || []);
-        console.log('Kunden geladen:', customers);
-        renderCustomers(customers);
+        currentCustomerPage = data.page || page;
+        totalCustomerPages = data.pages || 1;
+        
+        console.log(`Kunden geladen: ${customers.length} von ${data.total || customers.length} (Seite ${currentCustomerPage}/${totalCustomerPages})`);
+        renderCustomers(customers, data.total || customers.length);
       } catch (e) {
         console.error('Fehler beim Laden der Kunden:', e);
         customersList.innerHTML = `<p>Fehler beim Laden der Kunden: ${e.message}</p>`;
@@ -3118,49 +3129,126 @@
       return `<a href="${phoneUrl}" target="_blank" style="color: inherit; text-decoration: none; cursor: pointer;" title="Über 3CX anrufen">${icon}${phone}</a>`;
     }
 
-    // Kunden rendern
-    function renderCustomers(customers) {
+    // Kunden rendern (optimiert für Performance)
+    function renderCustomers(customers, total = 0) {
       if (!customers.length) {
         customersList.innerHTML = '<p>Keine Kunden vorhanden.</p>';
+        // Pagination-UI entfernen wenn keine Kunden
+        const paginationDiv = document.getElementById('customers-pagination');
+        if (paginationDiv) paginationDiv.innerHTML = '';
         return;
       }
       
-      customersList.innerHTML = customers.map(customer => {
+      // Einmaliges innerHTML-Update ist am schnellsten für große Listen
+      // Vorbereitung der Daten außerhalb der Template-String-Interpolation
+      const html = customers.map(customer => {
         const statusClass = getStatusClass(customer.status);
+        const lastContact = customer.last_contact ? new Date(customer.last_contact).toLocaleDateString('de-DE') : 'Nie';
+        const emailHtml = customer.email ? `<span><i class="fas fa-envelope"></i> ${customer.email}</span>` : '';
+        const phoneHtml = customer.phone ? `<span>${renderPhoneLink(customer.phone)}</span>` : '';
+        
         return `
         <div class="customer-item ${statusClass}" data-id="${customer.id}">
           <div class="customer-item-info">
-            <div class="customer-item-name">${customer.name}</div>
+            <div class="customer-item-name">${customer.name || ''}</div>
             <div class="customer-item-details">
-              ${customer.email ? `<span><i class="fas fa-envelope"></i> ${customer.email}</span>` : ''}
-              ${customer.phone ? `<span>${renderPhoneLink(customer.phone)}</span>` : ''}
+              ${emailHtml}
+              ${phoneHtml}
             </div>
             <div class="customer-item-meta">
-              <small>ID: ${customer.id} • Letzter Kontakt: ${new Date(customer.last_contact).toLocaleDateString('de-DE')}</small>
+              <small>ID: ${customer.id} • Letzter Kontakt: ${lastContact}</small>
             </div>
           </div>
         </div>
       `;
       }).join('');
       
-      // Event Listeners für Kundenauswahl und Rechtsklick hinzufügen
-      customersList.querySelectorAll('.customer-item').forEach(item => {
-        item.addEventListener('click', () => {
+      // Einmaliges DOM-Update
+      customersList.innerHTML = html;
+      
+      // Pagination-UI hinzufügen
+      let paginationDiv = document.getElementById('customers-pagination');
+      if (!paginationDiv) {
+        paginationDiv = document.createElement('div');
+        paginationDiv.id = 'customers-pagination';
+        paginationDiv.className = 'pagination';
+        customersList.parentNode.insertBefore(paginationDiv, customersList.nextSibling);
+      }
+      
+      if (totalCustomerPages > 1) {
+        let paginationHTML = `<div class="pagination-info">Seite ${currentCustomerPage} von ${totalCustomerPages} (${total} Kunden gesamt)</div>`;
+        paginationHTML += '<div class="pagination-buttons">';
+        
+        // Vorherige Seite
+        if (currentCustomerPage > 1) {
+          paginationHTML += `<button class="btn-small" onclick="loadCustomers(${currentCustomerPage - 1}, '${customerSearch.value}')">← Zurück</button>`;
+        }
+        
+        // Seitenzahlen (max. 5 anzeigen)
+        const startPage = Math.max(1, currentCustomerPage - 2);
+        const endPage = Math.min(totalCustomerPages, currentCustomerPage + 2);
+        
+        if (startPage > 1) {
+          paginationHTML += `<button class="btn-small" onclick="loadCustomers(1, '${customerSearch.value}')">1</button>`;
+          if (startPage > 2) paginationHTML += '<span>...</span>';
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+          const active = i === currentCustomerPage ? 'active' : '';
+          paginationHTML += `<button class="btn-small ${active}" onclick="loadCustomers(${i}, '${customerSearch.value}')">${i}</button>`;
+        }
+        
+        if (endPage < totalCustomerPages) {
+          if (endPage < totalCustomerPages - 1) paginationHTML += '<span>...</span>';
+          paginationHTML += `<button class="btn-small" onclick="loadCustomers(${totalCustomerPages}, '${customerSearch.value}')">${totalCustomerPages}</button>`;
+        }
+        
+        // Nächste Seite
+        if (currentCustomerPage < totalCustomerPages) {
+          paginationHTML += `<button class="btn-small" onclick="loadCustomers(${currentCustomerPage + 1}, '${customerSearch.value}')">Weiter →</button>`;
+        }
+        
+        paginationHTML += '</div>';
+        paginationDiv.innerHTML = paginationHTML;
+      } else {
+        paginationDiv.innerHTML = `<div class="pagination-info">${total} Kunden gesamt</div>`;
+      }
+      
+      // Event Delegation für bessere Performance (statt einzelner Event-Listener)
+      // Entferne alte Event-Listener falls vorhanden
+      const existingClickHandler = customersList._customerClickHandler;
+      const existingContextHandler = customersList._customerContextHandler;
+      if (existingClickHandler) {
+        customersList.removeEventListener('click', existingClickHandler);
+      }
+      if (existingContextHandler) {
+        customersList.removeEventListener('contextmenu', existingContextHandler);
+      }
+      
+      // Neue Event-Listener mit Delegation
+      customersList._customerClickHandler = (e) => {
+        const item = e.target.closest('.customer-item');
+        if (item) {
           const customerId = parseInt(item.dataset.id);
           selectCustomer(customerId);
-        });
+        }
+      };
         
-        // Rechtsklick für Löschen
-        item.addEventListener('contextmenu', (e) => {
+      customersList._customerContextHandler = (e) => {
+        const item = e.target.closest('.customer-item');
+        if (item) {
           e.preventDefault();
           const customerId = parseInt(item.dataset.id);
-          const customerName = item.querySelector('.customer-item-name').textContent;
+          const customerName = item.querySelector('.customer-item-name')?.textContent || 'Unbekannt';
           
           if (confirm(`Möchten Sie den Kunden "${customerName}" wirklich löschen?`)) {
             deleteCustomer(customerId);
           }
-        });
-      });
+        }
+      };
+      
+      customersList.addEventListener('click', customersList._customerClickHandler);
+      customersList.addEventListener('contextmenu', customersList._customerContextHandler);
     }
 
       // Kunde auswählen
@@ -3188,16 +3276,13 @@
         }
       }
 
-      // Kundenprofil rendern
+      // Kundenprofil rendern (ohne große JSON-Daten für bessere Performance)
       function renderCustomerProfile(customer) {
         console.log('Rendere Kundenprofil für:', customer.name);
-        const offerData = customer.offer_data || {};
-        const questionnaireData = customer.questionnaire_data || {};
-        const contactHistory = customer.contact_history || [];
-        
-        console.log('Angebot-Daten:', offerData);
-        console.log('Befragungsbogen-Daten:', questionnaireData);
-        console.log('Kontakthistorie:', contactHistory);
+        // JSON-Daten werden erst beim Klick auf den Tab geladen (Lazy Loading)
+        const offerData = customer.offer_data || null; // null = noch nicht geladen
+        const questionnaireData = customer.questionnaire_data || null;
+        const contactHistory = customer.contact_history || null;
       
       customerProfile.innerHTML = `
         <div class="customer-profile-header">
@@ -3223,6 +3308,7 @@
             <button class="tab-btn" data-tab="contracts">Dienstleistungsverträge</button>
             <button class="tab-btn" data-tab="notes">Notizen</button>
             <button class="tab-btn" data-tab="history">Kontakthistorie</button>
+            <button class="tab-btn" data-tab="sms">SMS</button>
           </div>
           
           <div class="customer-profile-tab-content">
@@ -3269,41 +3355,21 @@
               ` : ''}
             </div>
             
-            <div id="tab-offers" class="tab-panel">
+            <div id="tab-offers" class="tab-panel" data-loaded="false">
               <div class="profile-section">
                 <h3>Angebote</h3>
-                ${offerData.pdf_data ? `
-                  <div class="pdf-display">
-                    <iframe src="${offerData.pdf_data}" width="100%" height="600px" style="border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></iframe>
-                    <div class="pdf-actions">
-                      <a href="${offerData.pdf_data}" target="_blank" class="btn-coral">
-                        <i class="fas fa-external-link-alt"></i> In neuem Tab öffnen
-                      </a>
-                      <a href="${offerData.pdf_data}" download="${offerData.filename || 'Angebot.pdf'}" class="btn-coral">
-                        <i class="fas fa-download"></i> PDF herunterladen
-                      </a>
+                <div id="offers-content">
+                  <p>Lade Angebote...</p>
                     </div>
-                  </div>
-                ` : '<p>Keine Angebot-PDF vorhanden.</p>'}
               </div>
             </div>
             
-            <div id="tab-questionnaires" class="tab-panel">
+            <div id="tab-questionnaires" class="tab-panel" data-loaded="false">
               <div class="profile-section">
                 <h3>Befragungsbogen</h3>
-                ${questionnaireData.pdf_data ? `
-                  <div class="pdf-display">
-                    <iframe src="${questionnaireData.pdf_data}" width="100%" height="600px" style="border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></iframe>
-                    <div class="pdf-actions">
-                      <a href="${questionnaireData.pdf_data}" target="_blank" class="btn-coral">
-                        <i class="fas fa-external-link-alt"></i> In neuem Tab öffnen
-                      </a>
-                      <a href="${questionnaireData.pdf_data}" download="${questionnaireData.filename || 'Befragungsbogen.pdf'}" class="btn-coral">
-                        <i class="fas fa-download"></i> PDF herunterladen
-                      </a>
+                <div id="questionnaires-content">
+                  <p>Lade Befragungsbogen...</p>
                     </div>
-                  </div>
-                ` : '<p>Keine Befragungsbogen-PDF vorhanden.</p>'}
               </div>
             </div>
             
@@ -3350,20 +3416,56 @@
               </div>
             </div>
 
-            <div id="tab-history" class="tab-panel">
+            <div id="tab-history" class="tab-panel" data-loaded="false">
               <div class="profile-section">
                 <h3>Kontakthistorie</h3>
-                ${contactHistory.length > 0 ? `
-                  <div class="history-list">
-                    ${contactHistory.map(entry => `
-                      <div class="history-item">
-                        <div class="history-type">${getHistoryTypeLabel(entry.type)}</div>
-                        <div class="history-time">${new Date(entry.timestamp).toLocaleString('de-DE')}</div>
-                        ${entry.details ? `<div class="history-details">${JSON.stringify(entry.details)}</div>` : ''}
+                <div class="history-content">
+                  <p>Lade Kontakthistorie...</p>
                       </div>
-                    `).join('')}
+              </div>
+            </div>
+
+            <div id="tab-sms" class="tab-panel">
+              <div class="profile-section">
+                <h3>SMS versenden</h3>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 12px; max-width: 720px;">
+                  <div>
+                    <label for="sms-phone">Telefonnummer:</label>
+                    <input 
+                      type="text" 
+                      id="sms-phone" 
+                      value="${customer.mobile_phone || customer.phone || ''}" 
+                      readonly 
+                      style="width:100%; padding: 8px; background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;"
+                    />
+                    <small style="color: #666; display: block; margin-top: 4px;">
+                      ${customer.mobile_phone ? 'Mobilnummer' : customer.phone ? 'Telefonnummer' : 'Keine Nummer hinterlegt'}
+                    </small>
                   </div>
-                ` : '<p>Keine Kontakthistorie vorhanden.</p>'}
+                  <div>
+                    <label for="sms-message">Nachricht:</label>
+                    <textarea 
+                      id="sms-message" 
+                      rows="10" 
+                      style="width:100%; resize: vertical; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit;"
+                      placeholder="Geben Sie hier Ihre SMS-Nachricht ein..."
+                    ></textarea>
+                    <small style="color: #666; display: block; margin-top: 4px;">
+                      Zeichen: <span id="sms-char-count">0</span>
+                    </small>
+                  </div>
+                  <div>
+                    <button 
+                      class="btn-small" 
+                      id="send-sms-btn" 
+                      data-customer-id="${customer.id}"
+                      style="background-color: #f58060; color: white; border: none; padding: 0.45rem 0.8rem; border-radius: 10px; cursor: pointer;"
+                    >
+                      <i class="fas fa-paper-plane"></i> SMS versenden
+                    </button>
+                  </div>
+                  <div id="sms-status" style="margin-top: 8px;"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -3425,10 +3527,77 @@
           }
         });
       }
+
+      // SMS-Versand Event Listener
+      const sendSmsBtn = customerProfile.querySelector('#send-sms-btn');
+      const smsMessageEl = customerProfile.querySelector('#sms-message');
+      const smsCharCountEl = customerProfile.querySelector('#sms-char-count');
+      const smsStatusEl = customerProfile.querySelector('#sms-status');
+      
+      if (sendSmsBtn && smsMessageEl) {
+        // Zeichenzähler für SMS-Nachricht
+        if (smsMessageEl && smsCharCountEl) {
+          smsMessageEl.addEventListener('input', () => {
+            const count = smsMessageEl.value.length;
+            smsCharCountEl.textContent = count;
+            if (count > 160) {
+              smsCharCountEl.style.color = '#e74c3c';
+            } else {
+              smsCharCountEl.style.color = '#666';
+            }
+          });
+        }
+        
+        // SMS versenden
+        sendSmsBtn.addEventListener('click', async (e) => {
+          const cid = parseInt(e.target.dataset.customerId);
+          const message = smsMessageEl.value.trim();
+          
+          if (!message) {
+            smsStatusEl.innerHTML = '<p style="color: #e74c3c;">❌ Bitte geben Sie eine Nachricht ein.</p>';
+            return;
+          }
+          
+          const phoneEl = customerProfile.querySelector('#sms-phone');
+          if (!phoneEl || !phoneEl.value.trim()) {
+            smsStatusEl.innerHTML = '<p style="color: #e74c3c;">❌ Keine Telefonnummer für diesen Kunden hinterlegt.</p>';
+            return;
+          }
+          
+          // Button deaktivieren während des Versands
+          sendSmsBtn.disabled = true;
+          sendSmsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Wird versendet...';
+          smsStatusEl.innerHTML = '<p style="color: #3498db;">📤 SMS wird versendet...</p>';
+          
+          try {
+            const res = await fetch(`/api/customers/${cid}/sms`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: message })
+            });
+            
+            const result = await res.json();
+            
+            if (res.ok && result.success) {
+              smsStatusEl.innerHTML = '<p style="color: #27ae60;">✅ SMS erfolgreich versendet!</p>';
+              smsMessageEl.value = ''; // Nachricht leeren
+              if (smsCharCountEl) smsCharCountEl.textContent = '0';
+            } else {
+              smsStatusEl.innerHTML = `<p style="color: #e74c3c;">❌ Fehler: ${result.error || 'Unbekannter Fehler'}</p>`;
+            }
+          } catch (err) {
+            smsStatusEl.innerHTML = `<p style="color: #e74c3c;">❌ Fehler: ${err?.message || err}</p>`;
+          } finally {
+            // Button wieder aktivieren
+            sendSmsBtn.disabled = false;
+            sendSmsBtn.innerHTML = '<i class="fas fa-paper-plane"></i> SMS versenden';
+          }
+        });
+      }
     }
 
-      // Tab-Funktionen
-      function showCustomerTab(tabName, clickedButton) {
+      // Tab-Funktionen mit Lazy Loading
+      async function showCustomerTab(tabName, clickedButton) {
         console.log('Wechsle zu Tab:', tabName);
         
         // Alle Tabs verstecken
@@ -3449,9 +3618,117 @@
           clickedButton.classList.add('active');
         }
         
+        // Lazy Loading: Daten erst beim ersten Öffnen des Tabs laden
+        if (targetPanel && targetPanel.dataset.loaded === 'false' && currentCustomer) {
+          if (tabName === 'offers') {
+            await loadCustomerOffers(currentCustomer.id);
+          } else if (tabName === 'questionnaires') {
+            await loadCustomerQuestionnaires(currentCustomer.id);
+          } else if (tabName === 'history') {
+            await loadCustomerHistory(currentCustomer.id);
+          }
+          targetPanel.dataset.loaded = 'true';
+        }
+        
         // Spezielle Aktionen für bestimmte Tabs
         if (tabName === 'contracts' && currentCustomer) {
           loadContractsForCustomer(currentCustomer.id);
+        }
+      }
+
+    // Lazy Loading: Angebote laden
+    async function loadCustomerOffers(customerId) {
+      try {
+        const res = await fetch(`/api/customers/${customerId}`);
+        if (!res.ok) throw new Error('Fehler beim Laden');
+        const customer = await res.json();
+        const offerData = customer.offer_data || {};
+        const contentDiv = document.getElementById('offers-content');
+        if (contentDiv) {
+          contentDiv.innerHTML = offerData.pdf_data ? `
+            <div class="pdf-display">
+              <iframe src="${offerData.pdf_data}" width="100%" height="600px" style="border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></iframe>
+              <div class="pdf-actions">
+                <a href="${offerData.pdf_data}" target="_blank" class="btn-coral">
+                  <i class="fas fa-external-link-alt"></i> In neuem Tab öffnen
+                </a>
+                <a href="${offerData.pdf_data}" download="${offerData.filename || 'Angebot.pdf'}" class="btn-coral">
+                  <i class="fas fa-download"></i> PDF herunterladen
+                </a>
+              </div>
+            </div>
+          ` : '<p>Keine Angebot-PDF vorhanden.</p>';
+        }
+      } catch (e) {
+        console.error('Fehler beim Laden der Angebote:', e);
+        const contentDiv = document.getElementById('offers-content');
+        if (contentDiv) contentDiv.innerHTML = '<p>Fehler beim Laden der Angebote.</p>';
+      }
+    }
+
+    // Lazy Loading: Befragungsbogen laden
+    async function loadCustomerQuestionnaires(customerId) {
+      try {
+        const res = await fetch(`/api/customers/${customerId}`);
+        if (!res.ok) throw new Error('Fehler beim Laden');
+        const customer = await res.json();
+        const questionnaireData = customer.questionnaire_data || {};
+        const contentDiv = document.getElementById('questionnaires-content');
+        if (contentDiv) {
+          contentDiv.innerHTML = questionnaireData.pdf_data ? `
+            <div class="pdf-display">
+              <iframe src="${questionnaireData.pdf_data}" width="100%" height="600px" style="border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></iframe>
+              <div class="pdf-actions">
+                <a href="${questionnaireData.pdf_data}" target="_blank" class="btn-coral">
+                  <i class="fas fa-external-link-alt"></i> In neuem Tab öffnen
+                </a>
+                <a href="${questionnaireData.pdf_data}" download="${questionnaireData.filename || 'Befragungsbogen.pdf'}" class="btn-coral">
+                  <i class="fas fa-download"></i> PDF herunterladen
+                </a>
+              </div>
+            </div>
+          ` : '<p>Keine Befragungsbogen-PDF vorhanden.</p>';
+        }
+      } catch (e) {
+        console.error('Fehler beim Laden der Befragungsbogen:', e);
+        const contentDiv = document.getElementById('questionnaires-content');
+        if (contentDiv) contentDiv.innerHTML = '<p>Fehler beim Laden der Befragungsbogen.</p>';
+      }
+    }
+
+    // Lazy Loading: Kontakthistorie laden
+    async function loadCustomerHistory(customerId) {
+      try {
+        const res = await fetch(`/api/customers/${customerId}`);
+        if (!res.ok) throw new Error('Fehler beim Laden');
+        const customer = await res.json();
+        const contactHistory = customer.contact_history || [];
+        const historyDiv = document.getElementById('tab-history');
+        if (historyDiv) {
+          const historyContent = historyDiv.querySelector('.history-content');
+          if (historyContent) {
+            historyContent.innerHTML = contactHistory.length > 0 ? `
+              <div class="history-list">
+                ${contactHistory.map(entry => `
+                  <div class="history-item">
+                    <div class="history-type">${getHistoryTypeLabel(entry.type)}</div>
+                    <div class="history-time">${new Date(entry.timestamp).toLocaleString('de-DE')}</div>
+                    ${entry.details ? `<div class="history-details">${JSON.stringify(entry.details, null, 2)}</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p>Keine Kontakthistorie vorhanden.</p>';
+          }
+        }
+      } catch (e) {
+        console.error('Fehler beim Laden der Kontakthistorie:', e);
+        const historyDiv = document.getElementById('tab-history');
+        if (historyDiv) {
+          const historyContent = historyDiv.querySelector('.history-content');
+          if (historyContent) {
+            historyContent.innerHTML = '<p>Fehler beim Laden der Kontakthistorie.</p>';
+          }
+        }
         }
       }
 
@@ -3634,28 +3911,35 @@
     }
 
     // Suche (Filter in der Kundenliste)
+    // Serverseitige Suche mit Debounce für bessere Performance
+    let searchTimeout = null;
     function filterCustomersList(query) {
-      const q = String(query || '').toLowerCase();
-      const items = customersList.querySelectorAll('.customer-item');
-      items.forEach(item => {
-        const nameEl = item.querySelector('.customer-item-name');
-        const name = (nameEl ? nameEl.textContent : '').toLowerCase();
-        const id = String(item.dataset.id || '');
-        const matches = q === '' || name.includes(q) || id.includes(q);
-        item.style.display = matches ? '' : 'none';
-      });
+      // Alte Timeout löschen
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      // Neue Suche nach 500ms Pause (Debounce)
+      searchTimeout = setTimeout(() => {
+        currentCustomerPage = 1; // Zurück zur ersten Seite bei neuer Suche
+        loadCustomers(1, query);
+      }, 500);
     }
 
-    // Live-Filter beim Tippen
+    // Live-Filter beim Tippen (serverseitig)
     customerSearch.addEventListener('input', (e) => {
       filterCustomersList(e.target.value);
     });
 
-    // Enter-Taste löst Filter ebenso aus (und verhindert ungewolltes Submit)
+    // Enter-Taste löst sofortige Suche aus
     customerSearch.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        filterCustomersList(customerSearch.value);
+        if (searchTimeout) {
+          clearTimeout(searchTimeout);
+        }
+        currentCustomerPage = 1;
+        loadCustomers(1, customerSearch.value);
       }
     });
 

@@ -1,5 +1,27 @@
 version: '3.9'
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: helpcare-postgres
+    environment:
+      POSTGRES_DB: helpcare
+      POSTGRES_USER: helpcare
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpcare_secure_password_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpcare"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   dashboard:
     build: .
     container_name: helpcare-dashboard
@@ -7,14 +29,17 @@ services:
       - .env
     environment:
       - APP_DATA_DIR=/data
-      # Optional: DATABASE_URL for Postgres, sonst SQLite in /data/app.db
-      # - DATABASE_URL=postgresql://user:pass@host:5432/dbname
+      # PostgreSQL wird automatisch verwendet, wenn postgres-Service läuft
+      - DATABASE_URL=postgresql://helpcare:${POSTGRES_PASSWORD:-helpcare_secure_password_change_me}@postgres:5432/helpcare
       # Optional: GOOGLE OAuth etc.
       # - GOOGLE_CLIENT_CONFIG_JSON=...
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
     volumes:
       - ./data:/data:delegated
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:${PORT:-8000}/', timeout=3) else sys.exit(1)\""]
@@ -26,4 +51,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    command: bash -lc "exec gunicorn app:app -b 0.0.0.0:${PORT:-8000} --timeout 120"
+    command: bash -lc "exec gunicorn app:app -b 0.0.0.0:${PORT:-8000} --workers 4 --threads 2 --timeout 120 --worker-class sync"
+
+volumes:
+  postgres_data:
