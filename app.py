@@ -4916,6 +4916,143 @@ def send_signature_email(contract_id, customer_email, customer_name, contract_ty
     # Falls SMTP fehlschlägt, gib den SMTP-Fehler zurück
     print(f"❌ SMTP-Versand fehlgeschlagen: {smtp_error}")
     return False, f"SMTP-Versand fehlgeschlagen: {smtp_error}"
+
+def send_signed_contract_email(contract):
+    """Sendet das unterschriebene Dokument per E-Mail an Kunde und Kooperationspartner"""
+    try:
+        if not contract.signed_pdf_filename:
+            print("⚠️ Unterschriebenes Dokument nicht gefunden, E-Mail wird nicht versendet")
+            return
+        
+        # Lade Kunde und Partner
+        customer = Customer.query.get(contract.customer_id)
+        partner = Kooperationspartner.query.get(contract.kooperationspartner_id)
+        
+        if not customer or not partner:
+            print("⚠️ Kunde oder Partner nicht gefunden, E-Mail wird nicht versendet")
+            return
+        
+        # Liste der Empfänger
+        recipients = []
+        if customer.email:
+            recipients.append((customer.email, customer.name))
+        if partner.email:
+            recipients.append((partner.email, partner.name))
+        
+        if not recipients:
+            print("⚠️ Keine E-Mail-Adressen gefunden, E-Mail wird nicht versendet")
+            return
+        
+        # SMTP-Konfiguration
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.exchange.ionos.eu')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME', 'team@helpcare.de')
+        smtp_password = os.getenv('SMTP_PASSWORD', 'Gustav2000$')
+        smtp_use_tls = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+        smtp_use_ssl = os.getenv('SMTP_USE_SSL', 'False').lower() == 'true'
+        
+        if not smtp_username or not smtp_password:
+            print("⚠️ SMTP-Credentials nicht konfiguriert, E-Mail wird nicht versendet")
+            return
+        
+        # Lade das unterschriebene PDF
+        pdf_path = os.path.join(UPLOAD_FOLDER, contract.signed_pdf_filename)
+        if not os.path.exists(pdf_path):
+            print(f"⚠️ PDF-Datei nicht gefunden: {pdf_path}")
+            return
+        
+        with open(pdf_path, 'rb') as f:
+            pdf_data = f.read()
+        
+        # Signatur abrufen
+        signature = get_signature_for_email(smtp_username)
+        if not signature and smtp_username != 'team@helpcare.de':
+            print(f"⚠️ Signatur nicht für {smtp_username} gefunden, versuche team@helpcare.de")
+            signature = get_signature_for_email('team@helpcare.de')
+        print(f"🔍 Signatur-Abruf für {smtp_username}: {'✅ gefunden' if signature else '❌ nicht gefunden'}")
+        newline = '\n'
+        
+        # Versende E-Mail an jeden Empfänger
+        for recipient_email, recipient_name in recipients:
+            try:
+                message = MIMEMultipart('mixed')
+                message['Subject'] = f'Unterschriebener Dienstleistungsvertrag - {contract.contract_number}'
+                message['From'] = f"HelpCare <{smtp_username}>"
+                message['To'] = recipient_email
+                
+                # Einfacher E-Mail-Text wie gewünscht
+                email_body = f"""Guten Tag {recipient_name},
+
+anbei erhalten Sie den unterschriebenen Dienstleistungsvertrag.
+
+Viele Grüße"""
+                
+                # Body für Plain-Text und HTML vorbereiten
+                body_text_final = email_body
+                # Für HTML: Zeilenumbrüche zu <br> konvertieren, aber NACH dem Escaping
+                body_html_escaped = email_body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                body_html_final = body_html_escaped.replace(newline, '<br>')
+                
+                # Signatur hinzufügen, wenn vorhanden
+                if signature:
+                    print(f"✅ Füge Signatur hinzu (Länge: {len(signature)} Zeichen)")
+                    # Für Plain-Text: HTML-Tags entfernen
+                    import re
+                    from html import unescape
+                    signature_text = re.sub(r'<[^>]+>', '', signature)
+                    signature_text = unescape(signature_text)
+                    signature_text = signature_text.replace(newline, ' ').strip()
+                    body_text_final = f"{email_body}{newline}{newline}{signature_text}"
+                    # Für HTML: Signatur nach dem Escaping hinzufügen (Signatur ist bereits HTML)
+                    body_html_final = f"{body_html_final}<br><br>{signature}"
+                    print(f"✅ HTML-Body mit Signatur erstellt (Gesamtlänge: {len(body_html_final)} Zeichen)")
+                else:
+                    print(f"⚠️ Keine Signatur vorhanden, verwende nur Body")
+                    # body_html_final ist bereits korrekt gesetzt
+                
+                body_html_final = (
+                    "<div style=\"font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap\">" +
+                    body_html_final +
+                    "</div>"
+                )
+                
+                # Text und HTML Versionen
+                text_part = MIMEText(body_text_final, 'plain', 'utf-8')
+                html_part = MIMEText(body_html_final, 'html', 'utf-8')
+                
+                # Alternative part (text + HTML)
+                alternative = MIMEMultipart('alternative')
+                alternative.attach(text_part)
+                alternative.attach(html_part)
+                message.attach(alternative)
+                
+                # PDF als Anhang
+                attachment = MIMEBase('application', 'pdf')
+                attachment.set_payload(pdf_data)
+                encoders.encode_base64(attachment)
+                attachment.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename= Dienstleistungsvertrag_{contract.contract_number}_unterschrieben.pdf'
+                )
+                message.attach(attachment)
+                
+                # SMTP-Versand
+                if smtp_use_ssl:
+                    with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+                        server.login(smtp_username, smtp_password)
+                        server.send_message(message)
+                else:
+                    with smtplib.SMTP(smtp_server, smtp_port) as server:
+                        if smtp_use_tls:
+                            server.starttls()
+                        server.login(smtp_username, smtp_password)
+                        server.send_message(message)
+                
+                print(f"✅ E-Mail mit unterschriebenem Vertrag erfolgreich an {recipient_email} versendet!")
+            except Exception as e:
+                print(f"⚠️ Fehler beim Versenden der E-Mail an {recipient_email}: {e}")
+    except Exception as e:
+        print(f"⚠️ Fehler beim Versenden der E-Mail mit unterschriebenem Vertrag: {e}")
     
 
 def _notify_other_partners_on_contract_completed(contract: Dienstleistungsvertrag):
@@ -5068,6 +5205,7 @@ def check_dienstleistungsvertrag_status(contract_id):
     if contract.status not in ['completed', 'sent', 'customer_signed', 'partner_signed']:
         # Status basierend auf Signaturen aktualisieren
         if contract.signature_data and contract.partner_signature_data:
+            old_status = contract.status
             contract.status = 'completed'
             # Erstelle finales PDF mit BEIDEN Signaturen falls noch nicht vorhanden
             if not contract.signed_pdf_filename:
@@ -5077,6 +5215,9 @@ def check_dienstleistungsvertrag_status(contract_id):
             # Partner über den besetzten Auftrag informieren
             _notify_other_partners_on_contract_completed(contract)
             db.session.commit()
+            # Versende unterschriebenes Dokument per E-Mail, wenn Status gerade auf completed gesetzt wurde
+            if old_status != 'completed':
+                send_signed_contract_email(contract)
         elif contract.signature_data:
             contract.status = 'customer_signed'
             db.session.commit()
@@ -5922,6 +6063,9 @@ def save_dienstleistungsvertrag_signature_customer(contract_id):
                 contract.signed_pdf_filename = signed_pdf_filename
             # Partner über den besetzten Auftrag informieren
             _notify_other_partners_on_contract_completed(contract)
+            # Versende unterschriebenes Dokument per E-Mail
+            db.session.commit()  # Commit vor E-Mail-Versand, damit PDF verfügbar ist
+            send_signed_contract_email(contract)
         else:
             # Nur Kunde hat signiert
             contract.status = 'customer_signed'
@@ -5958,6 +6102,9 @@ def save_dienstleistungsvertrag_signature_partner(contract_id):
                 contract.signed_pdf_filename = signed_pdf_filename
             # Partner über den besetzten Auftrag informieren
             _notify_other_partners_on_contract_completed(contract)
+            # Versende unterschriebenes Dokument per E-Mail
+            db.session.commit()  # Commit vor E-Mail-Versand, damit PDF verfügbar ist
+            send_signed_contract_email(contract)
         else:
             # Nur Partner hat signiert
             contract.status = 'partner_signed'

@@ -372,6 +372,145 @@ def send_contract_email(contract, html_content):
         except Exception as e:
             print(f"⚠️  E-Mail-Versand fehlgeschlagen (verwende Mock): {e}")
 
+def send_signed_contract_email(contract):
+    """Sendet das unterschriebene Dokument per E-Mail an beide Parteien"""
+    if not contract.signed_pdf_path or not os.path.exists(contract.signed_pdf_path):
+        print("⚠️ Unterschriebenes Dokument nicht gefunden, E-Mail wird nicht versendet")
+        return
+    
+    # Extrahiere Kooperationspartner-E-Mail aus Variablen
+    variables = json.loads(contract.variables)
+    partner_email = variables.get('partner_email') or variables.get('kooperationspartner_email') or variables.get('Partner-Email') or None
+    
+    # Liste der Empfänger
+    recipients = [contract.customer_email]
+    if partner_email:
+        recipients.append(partner_email)
+    
+    print("\n" + "="*70)
+    print("📧 Versende unterschriebenes Dokument per E-Mail...")
+    print("="*70)
+    print(f"Empfänger: {', '.join(recipients)}")
+    print("="*70 + "\n")
+    
+    # Optional: Versuche echtes Email zu versenden wenn konfiguriert
+    if app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
+        try:
+            # Lese das unterschriebene Dokument
+            with open(contract.signed_pdf_path, 'rb') as f:
+                signed_document = f.read()
+            
+            # Erstelle E-Mail für jeden Empfänger
+            for recipient in recipients:
+                try:
+                    msg = Message(
+                        subject=f'Unterschriebener Vertrag - {contract.customer_name}',
+                        sender=app.config['MAIL_USERNAME'],
+                        recipients=[recipient]
+                    )
+                    
+                    # Bestimme Dateiname für Anhang
+                    attachment_filename = f'Dienstleistungsvertrag_{contract.customer_name.replace(" ", "_")}_unterschrieben.html'
+                    
+                    # Füge Anhang hinzu
+                    msg.attach(
+                        filename=attachment_filename,
+                        content_type='text/html',
+                        data=signed_document
+                    )
+                    
+                    msg.html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
+                        </style>
+                    </head>
+                    <body style="margin: 0; padding: 0; font-family: 'Quicksand', sans-serif; background-color: #fef6f2;">
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #fef6f2; padding: 40px 20px;">
+                            <tr>
+                                <td align="center">
+                                    <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                                        <!-- Header -->
+                                        <tr>
+                                            <td align="center" style="padding: 50px 30px; background: linear-gradient(135deg, #f58060 0%, #ff9d6e 100%);">
+                                                <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">✓ Vertrag unterschrieben</h1>
+                                            </td>
+                                        </tr>
+                                        
+                                        <!-- Content -->
+                                        <tr>
+                                            <td style="padding: 50px 40px;">
+                                                <h2 style="color: #f58060; font-size: 26px; font-weight: 600; margin: 0 0 20px 0;">Guten Tag,</h2>
+                                                <p style="color: #333; line-height: 1.8; margin: 0 0 20px 0; font-size: 16px;">
+                                                    der Dienstleistungsvertrag für <strong>{contract.customer_name}</strong> wurde erfolgreich unterschrieben.
+                                                </p>
+                                                <p style="color: #333; line-height: 1.8; margin: 0 0 35px 0; font-size: 16px;">
+                                                    Das unterschriebene Dokument finden Sie als Anhang zu dieser E-Mail.
+                                                </p>
+                                                
+                                                <div style="background-color: #fef6f2; padding: 25px; border-radius: 10px; margin: 40px 0; border-left: 4px solid #f58060;">
+                                                    <p style="margin: 0; font-size: 14px; color: #666; line-height: 1.6;">
+                                                        <strong>Vertragsdetails:</strong><br>
+                                                        Kunde: {contract.customer_name}<br>
+                                                        Unterschrieben am: {contract.signed_at.strftime('%d.%m.%Y um %H:%M Uhr') if contract.signed_at else 'N/A'}
+                                                    </p>
+                                                </div>
+                                                
+                                                <p style="color: #666; line-height: 1.6; margin: 35px 0 0 0; font-size: 14px;">
+                                                    Bei Fragen sind wir jederzeit für Sie erreichbar.<br>
+                                                    <a href="mailto:team@helpcare.de" style="color: #f58060; font-weight: 600; text-decoration: none;">team@helpcare.de</a> | 
+                                                    <span style="color: #f58060; font-weight: 600;">030 - 232 53 57 100</span>
+                                                </p>
+                                            </td>
+                                        </tr>
+                                        
+                                        <!-- Footer -->
+                                        <tr>
+                                            <td style="padding: 40px; background-color: #fef6f2; text-align: center; border-top: 1px solid #fdeae1;">
+                                                <p style="margin: 0 0 15px 0; color: #666; font-size: 15px; line-height: 1.6;">
+                                                    Mit freundlichen Grüßen,<br>
+                                                    <strong style="color: #f58060; font-weight: 600; font-size: 16px;">Ihr HelpCare Team</strong>
+                                                </p>
+                                                <div style="margin: 25px 0; padding-top: 20px; border-top: 1px solid #fdeae1;">
+                                                    <p style="margin: 0 0 8px 0; font-size: 12px; color: #999;">
+                                                        HelpCare GmbH | Kurfürstendamm 14 | 10719 Berlin
+                                                    </p>
+                                                    <p style="margin: 10px 0 0 0; font-size: 11px; color: #bbb;">
+                                                        Diese E-Mail wurde automatisch von SignaturApp versendet
+                                                    </p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </body>
+                    </html>
+                    """
+                    
+                    mail.send(msg)
+                    print(f"✅ E-Mail erfolgreich an {recipient} versendet!")
+                except Exception as e:
+                    print(f"⚠️ Fehler beim Versenden der E-Mail an {recipient}: {e}")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Lesen des unterschriebenen Dokuments: {e}")
+    else:
+        # Mock-E-Mail für Entwicklung
+        print("📧 MOCK-EMAIL (unterschriebenes Dokument)")
+        print(f"Von: noreply@signaturapp.local")
+        print(f"An: {', '.join(recipients)}")
+        print(f"Betreff: Unterschriebener Vertrag - {contract.customer_name}")
+        print("-"*70)
+        print()
+        print(f"Der Dienstleistungsvertrag für {contract.customer_name} wurde erfolgreich unterschrieben.")
+        print(f"Das unterschriebene Dokument ist als Anhang beigefügt.")
+        print()
+        print("="*70 + "\n")
+
 @app.route('/sign/<contract_id>')
 def sign_contract(contract_id):
     """Zeigt den Vertrag zum Signieren an"""
@@ -663,6 +802,7 @@ def save_signature():
     db.session.add(signature)
     
     # Füge Signatur zum PDF hinzu und aktualisiere Status
+    old_status = contract.status
     contract.status = 'signed'
     contract.signed_at = datetime.utcnow()
     
@@ -671,6 +811,14 @@ def save_signature():
     contract.signed_pdf_path = signed_pdf
     
     db.session.commit()
+    
+    # Versende E-Mail mit unterschriebenem Dokument, wenn Status auf signed gesetzt wurde
+    if old_status != 'signed':
+        try:
+            send_signed_contract_email(contract)
+        except Exception as e:
+            print(f"⚠️ Fehler beim Versenden der E-Mail mit unterschriebenem Dokument: {e}")
+            # Fehler nicht weiterwerfen, damit die Signatur trotzdem gespeichert wird
     
     return jsonify({'success': True})
 

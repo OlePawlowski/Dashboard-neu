@@ -211,21 +211,67 @@ export default function HelpCareRechner() {
         html2canvas:  { scale: 2, useCORS: true, allowTaint: true, dpi: 192, letterRendering: true },
         jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak:    { mode: ["css", "legacy"], avoid: [".no-break"] },
+        enableLinks:  true,
+      };
+      
+      // Entferne leere Seiten nach der PDF-Generierung
+      const removeEmptyPages = (pdf) => {
+        const totalPages = pdf.internal.getNumberOfPages();
+        for (let i = totalPages; i > 0; i--) {
+          pdf.setPage(i);
+          const pageText = pdf.getText();
+          // Prüfe ob Seite leer ist (nur Whitespace)
+          if (!pageText || pageText.trim().length === 0) {
+            pdf.deletePage(i);
+          }
+        }
+        return pdf;
       };
 
       const instance = html2pdf().set(options).from(html);
-      // Also create data URI to enable emailing without a second render
-      const pdfBlob = await instance.outputPdf('blob');
-      const arrayBuf = await pdfBlob.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuf);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-      const base64 = btoa(binary);
-      // Save (download)
-      await instance.save();
-      // Store last generated PDF in window for optional email send
-      const key = variant === 'neutral' ? '__lastOfferPdfBase64_neutral' : '__lastOfferPdfBase64_standard';
-      window[key] = `data:application/pdf;base64,${base64}`;
+      
+      // Generiere PDF und warte auf Abschluss
+      const pdf = await instance.outputPdf('pdf');
+      
+      if (pdf && pdf.internal) {
+        const totalPages = pdf.internal.getNumberOfPages();
+        
+        // Entferne leere Seiten von hinten nach vorne
+        // WICHTIG: Prüfe nur Seiten, die wirklich leer sind (kein Text, keine Bilder)
+        for (let i = totalPages; i > 0; i--) {
+          pdf.setPage(i);
+          const pageText = pdf.getText();
+          // Prüfe ob Seite wirklich leer ist (kein Text oder nur Whitespace)
+          // Lasse die letzte Seite mit Inhalt (z.B. "So geht es weiter") unberührt
+          if (i < totalPages && (!pageText || pageText.trim().length === 0)) {
+            pdf.deletePage(i);
+          }
+        }
+        
+        // Speichere das bereinigte PDF
+        pdf.save(filename);
+        
+        // Erstelle Base64 für E-Mail
+        const pdfBlob = pdf.output('blob');
+        const arrayBuf = await pdfBlob.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuf);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
+        const key = variant === 'neutral' ? '__lastOfferPdfBase64_neutral' : '__lastOfferPdfBase64_standard';
+        window[key] = `data:application/pdf;base64,${base64}`;
+      } else {
+        // Fallback: Verwende die ursprüngliche Methode ohne leere Seiten-Entfernung
+        const pdfBlob = await instance.outputPdf('blob');
+        const arrayBuf = await pdfBlob.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuf);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
+        await instance.save();
+        const key = variant === 'neutral' ? '__lastOfferPdfBase64_neutral' : '__lastOfferPdfBase64_standard';
+        window[key] = `data:application/pdf;base64,${base64}`;
+      }
       return;
     } catch (err) {
       // Fallback auf Druckdialog
@@ -295,13 +341,43 @@ export default function HelpCareRechner() {
       pagebreak:    { mode: ["css", "legacy"], avoid: [".no-break"] },
     };
     const instance = html2pdf().set(options).from(html);
-    const pdfBlob = await instance.outputPdf('blob');
-    const arrayBuf = await pdfBlob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuf);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
-    return `data:application/pdf;base64,${base64}`;
+    
+    // Warte auf PDF-Generierung und entferne leere Seiten
+    const pdf = await instance.outputPdf('pdf');
+    
+    if (pdf && pdf.internal) {
+      const totalPages = pdf.internal.getNumberOfPages();
+      
+      // Entferne leere Seiten von hinten nach vorne
+      // WICHTIG: Prüfe nur Seiten, die wirklich leer sind (kein Text, keine Bilder)
+      // Lasse die letzte Seite mit Inhalt unberührt
+      for (let i = totalPages; i > 0; i--) {
+        pdf.setPage(i);
+        const pageText = pdf.getText();
+        // Prüfe ob Seite wirklich leer ist (kein Text oder nur Whitespace)
+        // Lasse die letzte Seite mit Inhalt (z.B. "So geht es weiter") unberührt
+        if (i < totalPages && (!pageText || pageText.trim().length === 0)) {
+          pdf.deletePage(i);
+        }
+      }
+      
+      const pdfBlob = pdf.output('blob');
+      const arrayBuf = await pdfBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      return `data:application/pdf;base64,${base64}`;
+    } else {
+      // Fallback: Verwende die ursprüngliche Methode ohne leere Seiten-Entfernung
+      const pdfBlob = await instance.outputPdf('blob');
+      const arrayBuf = await pdfBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      return `data:application/pdf;base64,${base64}`;
+    }
   }
 
   async function sendOfferEmail(variant = 'standard') {
