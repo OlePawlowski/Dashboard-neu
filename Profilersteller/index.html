@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Betreuungskraftprofil Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/profilersteller/styles.css?v=3">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="preview-toolbar">
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <button type="button" id="pdfButton" class="primary-button">PDF erstellen</button>
+          <button type="button" id="resetButton" class="secondary-button">Beispieldaten zurücksetzen</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <label for="customerSelect" style="font-size:0.85rem; color:#333;">Kunde:</label>
+          <select id="customerSelect" style="min-width:220px; padding:0.35rem 0.6rem; border-radius:999px; border:1px solid rgba(0,0,0,0.15); font-size:0.85rem;">
+            <option value="">Bitte Kunden wählen…</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="document-stage">
+      <form id="profileForm" class="profile-wrapper">
+        <input id="photoInput" type="file" accept="image/*" hidden>
+      
+        <div class="profile-header">
+          <div class="profile-photo">
+            <label class="photo-picker" for="photoInput" title="Bild auswählen">
+              <img id="photoPreview" class="photo-preview" alt="Profilbild Vorschau">
+              <div id="photoPlaceholder" class="avatar-placeholder">
+                <span>Profilbild auswählen</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="profile-title">
+            <div class="profile-title-content">
+              <div class="profile-title-row">
+                <div class="profile-title-copy">
+                  <div
+                    class="editable-inline editable-name"
+                    contenteditable="true"
+                    data-default="Lukasz"
+                    data-inline="true"
+                    data-export-name="true"
+                    spellcheck="false"
+                    aria-label="Name"
+                  >Lukasz</div>
+                  <div class="worker-role">BETREUUNGSPERSON</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-content">
+          <div class="sidebar-column">
+            <section class="content-section">
+              <h3>ZU MEINER PERSON</h3>
+              <ul class="detail-list">
+                <li>
+                  <strong>Geb.:</strong>
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="12.03.1987"
+                    data-inline="true"
+                    spellcheck="false"
+                  >12.03.1987</span>
+                </li>
+                <li>
+                  <strong>Nation:</strong>
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="Polen"
+                    data-inline="true"
+                    spellcheck="false"
+                  >Polen</span>
+                </li>
+                <li>
+                  <strong>Größe:</strong>
+                  <span class="inline-group">
+                    <span
+                      class="editable-inline editable-small"
+                      contenteditable="true"
+                      data-default="165"
+                      data-inline="true"
+                      spellcheck="false"
+                    >165</span>
+                    <span>cm</span>
+                  </span>
+                </li>
+                <li>
+                  <strong>Gewicht:</strong>
+                  <span class="inline-group">
+                    <span
+                      class="editable-inline editable-small"
+                      contenteditable="true"
+                      data-default="62"
+                      data-inline="true"
+                      spellcheck="false"
+                    >62</span>
+                    <span>kg</span>
+                  </span>
+                </li>
+                <li>
+                  <strong>Raucher:</strong>
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="nein"
+                    data-inline="true"
+                    spellcheck="false"
+                  >nein</span>
+                </li>
+                <li>
+                  <strong>Turnus:</strong>
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="6 Wochen"
+                    data-inline="true"
+                    spellcheck="false"
+                  >6 Wochen</span>
+                </li>
+              </ul>
+            </section>
+
+            <section class="content-section">
+              <h3>QUALIFIKATIONEN</h3>
+              <div class="option-list">
+                <div class="text-row">
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="Sehr gute Kochkünste"
+                    data-inline="true"
+                    spellcheck="false"
+                  >Sehr gute Kochkünste</span>
+                </div>
+
+                <div class="text-row">
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="5 Jahre Erfahrung"
+                    data-inline="true"
+                    spellcheck="false"
+                  >5 Jahre Erfahrung</span>
+                </div>
+
+                <div class="text-row">
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="Führerschein:"
+                    data-inline="true"
+                    spellcheck="false"
+                  >Führerschein:</span>
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="Ja"
+                    data-inline="true"
+                    spellcheck="false"
+                  >Ja</span>
+                </div>
+
+                <div class="text-row">
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="Deutschkenntnisse:"
+                    data-inline="true"
+                    spellcheck="false"
+                  >Deutschkenntnisse:</span>
+                  <span
+                    class="editable-inline"
+                    contenteditable="true"
+                    data-default="Gute Deutschkenntnisse"
+                    data-inline="true"
+                    spellcheck="false"
+                  >Gute Deutschkenntnisse</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="content-section">
+              <h3>LEISTUNGEN</h3>
+              <div class="option-list">
+                <label class="check-item"><input type="checkbox" name="serviceDementia" checked><span class="editable-inline" contenteditable="true" data-default="Demenzpflege" data-inline="true" spellcheck="false">Demenzpflege</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceNight" checked><span class="editable-inline" contenteditable="true" data-default="Nachteinsätze" data-inline="true" spellcheck="false">Nachteinsätze</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceDiapers" checked><span class="editable-inline" contenteditable="true" data-default="Windeln wechseln" data-inline="true" spellcheck="false">Windeln wechseln</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceTwoPersons" checked><span class="editable-inline" contenteditable="true" data-default="Zwei Personen" data-inline="true" spellcheck="false">Zwei Personen</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceBedridden" checked><span class="editable-inline" contenteditable="true" data-default="Bettlägerigkeit" data-inline="true" spellcheck="false">Bettlägerigkeit</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceWheelchair" checked><span class="editable-inline" contenteditable="true" data-default="Rollstuhlpatienten" data-inline="true" spellcheck="false">Rollstuhlpatienten</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceToilet" checked><span class="editable-inline" contenteditable="true" data-default="Hilfe Toilettengang" data-inline="true" spellcheck="false">Hilfe Toilettengang</span></label>
+                <label class="check-item"><input type="checkbox" name="serviceIntimate" checked><span class="editable-inline" contenteditable="true" data-default="Übernahme Intimpflege" data-inline="true" spellcheck="false">Übernahme Intimpflege</span></label>
+              </div>
+            </section>
+
+            <div class="sidebar-logo">
+              <img class="sidebar-logo-image" src="/profilersteller/assets/HelpCare-logo.png" alt="HelpCare Logo">
+            </div>
+          </div>
+
+          <div class="main-column">
+            <section class="content-section">
+              <h3>PERSONENBESCHREIBUNG</h3>
+              <div
+                class="editable-block editable-description"
+                contenteditable="true"
+                data-default="Die Betreuerin verfügt über mehr als fünf Jahre Erfahrung in der Betreuung älterer Menschen, auch in anspruchsvolleren Situationen. Sie bleibt ruhig, reagiert angemessen und geht einfühlsam auf die individuellen Bedürfnisse der betreuten Personen ein. Durch ihre herzliche, empathische und verantwortungsbewusste Art schafft sie schnell eine vertrauensvolle Atmosphäre.
+                Im Alltag zeigt sie Geduld und Engagement. Sie unterstützt die Senioren respektvoll und achtet auf ihr Wohlbefinden und ihren Komfort.
+                In ihrer Freizeit liest sie gern, reist, geht spazieren und kocht."
+                spellcheck="true"
+              >Die Betreuerin verfügt über mehr als fünf Jahre Erfahrung in der Betreuung älterer Menschen, auch in anspruchsvolleren Situationen. Sie bleibt ruhig, reagiert angemessen und geht einfühlsam auf die individuellen Bedürfnisse der betreuten Personen ein.<br><br>Durch ihre herzliche, empathische und verantwortungsbewusste Art schafft sie schnell eine vertrauensvolle Atmosphäre.<br><br>Im Alltag zeigt sie Geduld und Engagement. Sie unterstützt die Senioren respektvoll und achtet auf ihr Wohlbefinden und ihren Komfort. In ihrer Freizeit liest sie gern, reist, geht spazieren und kocht.</div>
+            </section>
+
+            <section class="content-section">
+              <h3>ERFAHRUNGEN</h3>
+              <div class="experience-grid">
+                <label class="check-item"><input type="checkbox" name="expAlzheimer" checked><span class="editable-inline" contenteditable="true" data-default="Alzheimer" data-inline="true" spellcheck="false">Alzheimer</span></label>
+                <label class="check-item"><input type="checkbox" name="expHeartAttack" checked><span class="editable-inline" contenteditable="true" data-default="Herzinfarkt" data-inline="true" spellcheck="false">Herzinfarkt</span></label>
+                <label class="check-item"><input type="checkbox" name="expParkinson" checked><span class="editable-inline" contenteditable="true" data-default="Parkinson" data-inline="true" spellcheck="false">Parkinson</span></label>
+                <label class="check-item"><input type="checkbox" name="expCancer" checked><span class="editable-inline" contenteditable="true" data-default="Krebs" data-inline="true" spellcheck="false">Krebs</span></label>
+                <label class="check-item"><input type="checkbox" name="expStairlift" checked><span class="editable-inline" contenteditable="true" data-default="Treppenlift" data-inline="true" spellcheck="false">Treppenlift</span></label>
+                <label class="check-item"><input type="checkbox" name="expDementia" checked><span class="editable-inline" contenteditable="true" data-default="Demenz" data-inline="true" spellcheck="false">Demenz</span></label>
+                <label class="check-item"><input type="checkbox" name="expDiabetes" checked><span class="editable-inline" contenteditable="true" data-default="Diabetes" data-inline="true" spellcheck="false">Diabetes</span></label>
+                <label class="check-item"><input type="checkbox" name="expDepression" checked><span class="editable-inline" contenteditable="true" data-default="Depression" data-inline="true" spellcheck="false">Depression</span></label>
+                <label class="check-item"><input type="checkbox" name="expWheelchair" checked><span class="editable-inline" contenteditable="true" data-default="Rollstuhl" data-inline="true" spellcheck="false">Rollstuhl</span></label>
+                <label class="check-item"><input type="checkbox" name="expAsthma" checked><span class="editable-inline" contenteditable="true" data-default="Asthma" data-inline="true" spellcheck="false">Asthma</span></label>
+                <label class="check-item"><input type="checkbox" name="expStroke" checked><span class="editable-inline" contenteditable="true" data-default="Schlaganfall" data-inline="true" spellcheck="false">Schlaganfall</span></label>
+                <label class="check-item"><input type="checkbox" name="expDecubitus" checked><span class="editable-inline" contenteditable="true" data-default="Dekubitus" data-inline="true" spellcheck="false">Dekubitus</span></label>
+                <label class="check-item"><input type="checkbox" name="expOsteoporosis" checked><span class="editable-inline" contenteditable="true" data-default="Osteoporose" data-inline="true" spellcheck="false">Osteoporose</span></label>
+                <label class="check-item"><input type="checkbox" name="expRollator" checked><span class="editable-inline" contenteditable="true" data-default="Rollator" data-inline="true" spellcheck="false">Rollator</span></label>
+                <label class="check-item"><input type="checkbox" name="expIncontinence" checked><span class="editable-inline" contenteditable="true" data-default="Inkontinenz" data-inline="true" spellcheck="false">Inkontinenz</span></label>
+              </div>
+            </section>
+
+            <div class="profile-footer">HelpCare GmbH | Tel.: 030 2325357-100</div>
+          </div>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="/profilersteller/app.js?v=3"></script>
+</body>
+</html>

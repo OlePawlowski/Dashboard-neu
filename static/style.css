@@ -527,9 +527,9 @@ body {
 
 /* Outlook-ähnliches Mail-Layout */
 .mail-layout { margin-bottom: 2rem; }
-.mail-columns { display: grid; grid-template-columns: 360px 1fr; gap: 1rem; min-height: 360px; }
-.mail-list { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-panel); overflow: auto; }
-.mail-preview { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-panel); padding: 0.75rem; overflow: auto; }
+.mail-columns { display: grid; grid-template-columns: 360px 1fr; gap: 1rem; max-height: calc(100vh - 450px); min-height: 400px; height: calc(100vh - 450px); }
+.mail-list { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-panel); overflow-y: auto; overflow-x: hidden; height: 100%; }
+.mail-preview { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-panel); padding: 0.75rem; overflow-y: auto; overflow-x: hidden; height: 100%; }
 .mail-list-empty, .mail-preview-empty { padding: 1rem; color: var(--muted); }
 .mail-item { padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.06); cursor: pointer; }
 .mail-item:last-child { border-bottom: none; }
@@ -546,6 +546,7 @@ body {
 .preview-from { font-weight: 800; }
 .preview-time { color: var(--muted); }
 .preview-subject { font-weight: 700; margin-bottom: 6px; }
+.preview-body { white-space: pre-wrap; word-wrap: break-word; overflow: visible; max-height: none; line-height: 1.5; }
 .preview-actions { margin-top: 10px; }
 
 .kpi-score,
@@ -842,9 +843,87 @@ body {
 /* Kundenverwaltung */
 .customers-section { margin-top: 1rem; }
 .customers-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+
+/* Kundenverwaltung spezifisch: Header mit Filter-Buttons */
+#customers-modal .customers-header {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+}
 .customers-controls { display: flex; gap: 0.75rem; align-items: center; }
 .customers-controls input { padding: 0.5rem; border: 1px solid var(--glass-border); border-radius: 6px; background: rgba(255,255,255,0.1); color: #111; }
 .customers-controls input::placeholder { color: #666; }
+
+/* Kategorien-Filter Buttons */
+.customer-category-filters { 
+  display: flex; 
+  gap: 0.5rem; 
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.category-filter-btn,
+button.category-filter-btn,
+.customer-category-filters button,
+.customer-category-filters .category-filter-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  background: rgba(255,255,255,0.1);
+  color: #2c2c2c !important;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.category-filter-btn:hover,
+button.category-filter-btn:hover,
+.customer-category-filters button:hover,
+.customer-category-filters .category-filter-btn:hover {
+  background: rgba(255,255,255,0.15);
+  border-color: var(--accent, #f58060);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  color: #2c2c2c !important;
+}
+
+.category-filter-btn.active,
+button.category-filter-btn.active,
+.customer-category-filters button.active,
+.customer-category-filters .category-filter-btn.active {
+  background: linear-gradient(135deg, rgba(245, 128, 96, 0.2) 0%, rgba(245, 128, 96, 0.1) 100%);
+  border-color: var(--accent, #f58060);
+  color: #2c2c2c !important;
+  font-weight: 600;
+  box-shadow: 
+    0 2px 8px rgba(245, 128, 96, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Dark Mode für Filter-Buttons */
+.dark .category-filter-btn,
+body.dark .category-filter-btn {
+  background: rgba(255,255,255,0.05);
+  color: #2c2c2c !important;
+  border-color: rgba(255,255,255,0.1);
+}
+
+.dark .category-filter-btn:hover,
+body.dark .category-filter-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--accent, #f58060);
+  color: #2c2c2c !important;
+}
+
+.dark .category-filter-btn.active,
+body.dark .category-filter-btn.active {
+  background: linear-gradient(135deg, rgba(245, 128, 96, 0.25) 0%, rgba(245, 128, 96, 0.15) 100%);
+  border-color: var(--accent, #f58060);
+  color: #2c2c2c !important;
+}
 
 .customers-content { display: flex; gap: 1rem; height: 70vh; }
 .customers-sidebar { width: 300px; flex-shrink: 0; }
@@ -1046,9 +1125,9 @@ body.dark .customer-item.status-verstorben {
 
 .customer-profile-content { height: calc(100% - 80px); }
 .customer-profile-tabs { display: flex; border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); }
-.tab-btn { padding: 1rem 1.5rem; border: none; background: transparent; color: #666; cursor: pointer; transition: all 0.2s; }
-.tab-btn:hover { background: rgba(255,255,255,0.05); color: #111; }
-.tab-btn.active { background: rgba(255,255,255,0.1); color: #111; border-bottom: 2px solid var(--accent); }
+.customer-profile-tabs .tab-btn { padding: 1rem 1.5rem; border: none; background: transparent; color: #000 !important; font-family: 'Quicksand', sans-serif; cursor: pointer; transition: all 0.2s; }
+.customer-profile-tabs .tab-btn:hover { background: rgba(255,255,255,0.05); color: #000 !important; }
+.customer-profile-tabs .tab-btn.active { background: rgba(255,255,255,0.1); color: #000 !important; border-bottom: 2px solid var(--accent); }
 
 .customer-profile-tab-content { height: calc(100% - 50px); overflow-y: auto; }
 .tab-panel { display: none; padding: 1.5rem; }
@@ -1277,7 +1356,6 @@ textarea, select {
 #pdfUploadForm input[type="file"]:active::before { transform: translateY(1px); }
 input[type="text"]:focus, input[type="email"]:focus, input[type="file"]:focus,
 textarea:focus, select:focus { outline: none; box-shadow: var(--focus-ring); }
-
 /* Scrollbar polishing */
 #einsatzList, #pdf-list, .team-notes-list, .gmail-pane ul {
   scrollbar-width: thin;
