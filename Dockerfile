@@ -4,12 +4,23 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Only install node deps first for better caching
+# Only install node deps for the main Vite-App (Kostenrechner) zuerst für besseres Caching
 COPY package*.json ./
 RUN npm ci
 
-# Copy the rest and build
+# Copy the rest of the repo (inkl. sevdesk_src) und baue den Kostenrechner
 COPY . .
+RUN npm run build
+
+# ---------- Builder 2: Sevdesk-Rechnungsmodul ----------
+FROM node:20-alpine AS sevdesk-builder
+WORKDIR /app
+
+# Nur Sevdesk-Projekt-Dateien kopieren
+COPY sevdesk_src/Sevdesk/package*.json ./
+RUN npm ci
+
+COPY sevdesk_src/Sevdesk ./
 RUN npm run build
 
 # ---------- Runtime: Python with Gunicorn ----------
@@ -41,6 +52,9 @@ COPY . .
 
 # Bring in built calculator assets
 COPY --from=builder /app/static/kostenrechner ./static/kostenrechner
+
+# Bring in built invoices (Sevdesk) assets
+COPY --from=sevdesk-builder /app/dist ./static/rechnungen
 
 # Railway provides $PORT
 CMD ["bash", "-lc", "exec gunicorn app:app -b 0.0.0.0:${PORT}"]

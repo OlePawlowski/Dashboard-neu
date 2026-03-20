@@ -479,6 +479,30 @@ class Caregiver(db.Model):
         }
 
 
+class CustomerProposal(db.Model):
+    __tablename__ = 'customer_proposals'
+
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False, index=True)
+    partner_id = db.Column(db.Integer, db.ForeignKey('kooperationspartner.id'), nullable=False, index=True)
+    upload_token = db.Column(db.String(128), nullable=False, index=True, unique=True)
+    original_filename = db.Column(db.String(255), nullable=True)
+    stored_filename = db.Column(db.String(512), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    uploaded_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'customer_id': self.customer_id,
+            'partner_id': self.partner_id,
+            'upload_token': self.upload_token,
+            'original_filename': self.original_filename,
+            'stored_filename': self.stored_filename,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None,
+        }
+
 class Dienstleistungsvertrag(db.Model):
     __tablename__ = 'dienstleistungsvertraege'
     

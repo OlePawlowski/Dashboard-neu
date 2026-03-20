@@ -88,6 +88,9 @@ export function NewInvoice() {
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const actionsButtonRef = useRef<HTMLDivElement>(null);
   const [actionsMenuPosition, setActionsMenuPosition] = useState({ top: 0, left: 0 });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pendingInvoiceId, setPendingInvoiceId] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (actionsMenuOpen && actionsButtonRef.current) {
@@ -220,62 +223,91 @@ export function NewInvoice() {
   };
 
   const handleDownload = async () => {
-    const savedId = await handleSave('offen', true);
-    setTimeout(async () => {
-      const inv = getInvoice(savedId);
-      if (inv) {
-        await generateInvoicePDF(
-          inv,
-          getPartner(inv.partnerId),
-          getCustomer(inv.customerId)
-        );
-      }
-    }, 100);
+    const savedId = await handleSave('offen', false);
+    const inv = getInvoice(savedId);
+    if (inv) {
+      await generateInvoicePDF(
+        inv,
+        getPartner(inv.partnerId),
+        getCustomer(inv.customerId)
+      );
+    }
   };
 
   const handleSend = async () => {
-    const savedId = await handleSave('offen', true);
-    setTimeout(async () => {
-      const inv = getInvoice(savedId);
-      if (!inv) return;
+    const savedId = await handleSave('offen', false);
+    const inv = getInvoice(savedId);
+    if (!inv) return;
 
-      const partner = getPartner(inv.partnerId);
-      const customer = getCustomer(inv.customerId);
+    const partner = getPartner(inv.partnerId);
+    const customer = getCustomer(inv.customerId);
 
-      const to = (partner?.email || '').trim();
-      if (!to) {
-        window.alert('Bitte hinterlegen Sie eine E-Mail-Adresse beim Kooperationspartner (Rechnungsempfänger).');
-        return;
+    const to = (partner?.email || '').trim();
+    if (!to) {
+      window.alert('Bitte hinterlegen Sie eine E-Mail-Adresse beim Kooperationspartner (Rechnungsempfänger).');
+      return;
+    }
+
+    try {
+      const pdfDataUrl = await generateInvoicePDFDataUrl(inv, partner, customer);
+      setPreviewUrl(pdfDataUrl);
+      setPendingInvoiceId(savedId);
+      setActionsMenuOpen(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      window.alert('❌ Vorschau der Rechnung fehlgeschlagen: ' + msg);
+    }
+  };
+
+  const handleConfirmSend = async () => {
+    if (!pendingInvoiceId) return;
+    const inv = getInvoice(pendingInvoiceId);
+    if (!inv) return;
+
+    const partner = getPartner(inv.partnerId);
+    const customer = getCustomer(inv.customerId);
+
+    const to = (partner?.email || '').trim();
+    if (!to) {
+      window.alert('Bitte hinterlegen Sie eine E-Mail-Adresse beim Kooperationspartner (Rechnungsempfänger).');
+      return;
+    }
+
+    try {
+      setIsSending(true);
+      const pdfDataUrl =
+        previewUrl && previewUrl.startsWith('data:') ?
+          previewUrl :
+          await generateInvoicePDFDataUrl(inv, partner, customer);
+
+      const payload = {
+        to,
+        invoiceNumber: inv.invoiceNumber,
+        pdf_base64: pdfDataUrl,
+        partnerName: partner?.name ?? '',
+        customerName: customer?.name ?? '',
+      };
+
+      const res = await fetch('/api/invoices/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || 'Unbekannter Fehler beim Versand der Rechnung.');
       }
 
-      try {
-        const pdfDataUrl = await generateInvoicePDFDataUrl(inv, partner, customer);
-
-        const payload = {
-          to,
-          invoiceNumber: inv.invoiceNumber,
-          pdf_base64: pdfDataUrl,
-          partnerName: partner?.name ?? '',
-          customerName: customer?.name ?? '',
-        };
-
-        const res = await fetch('/api/invoices/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error((data as { error?: string }).error || 'Unbekannter Fehler beim Versand der Rechnung.');
-        }
-
-        window.alert('✔️ Die Rechnung wurde per E-Mail versendet.');
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        window.alert('❌ Versand der Rechnung fehlgeschlagen: ' + msg);
-      }
-    }, 100);
+      window.alert('✔️ Die Rechnung wurde per E-Mail versendet.');
+      setPreviewUrl(null);
+      setPendingInvoiceId(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      window.alert('❌ Versand der Rechnung fehlgeschlagen: ' + msg);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const updateHeaderFromSelection = () => {
@@ -297,6 +329,41 @@ Vermittlungsprovision für 24-Stunden-Pflege von ${customer.name}: ${detailsText
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      {previewUrl && (
+        <div className="mb-6 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+            <span className="text-sm font-medium text-gray-700">
+              Rechnungsvorschau
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewUrl(null);
+                  setPendingInvoiceId(null);
+                }}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSend}
+                disabled={isSending}
+                className="px-4 py-1.5 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSending ? 'Senden…' : 'Endgültig versenden'}
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={previewUrl}
+            title="Rechnungsvorschau"
+            className="w-full h-[600px] border-0 bg-white"
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-6 border-b border-gray-200">
         <h1 className="text-2xl font-bold text-gray-900">
           {isEdit ? 'Rechnung bearbeiten' : 'Neue Rechnung'}

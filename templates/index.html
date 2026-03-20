@@ -2639,7 +2639,12 @@
         
         // Verwende benutzerdefinierte Werte oder Fallback
         const finalSubject = customSubject || 'Befragungsbogen';
-        const finalBody = customBody || 'Sehr geehrte Damen und Herren,\n\nanbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\nViele Grüße';
+        const finalBody = customBody || (
+          'Sehr geehrte Damen und Herren,\n\n' +
+          'anbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\n' +
+          'Um uns geeignete Profilvorschläge zukommen zu lassen, nutzen Sie bitte den folgenden Button.\n' +
+          'Nach dem Klick können Sie Ihre Unterlagen direkt auswählen und übermitteln.'
+        );
         
         // Ausgewählte Partner sammeln
         const selectedPartners = [];
@@ -4738,6 +4743,7 @@
             <button class="tab-btn" data-tab="offers">Angebote</button>
             <button class="tab-btn" data-tab="questionnaires">Befragungsbögen</button>
             <button class="tab-btn" data-tab="profiles">Profile</button>
+            <button class="tab-btn" data-tab="proposals">Vorschläge</button>
             <button class="tab-btn" data-tab="contracts">Dienstleistungsverträge</button>
             <button class="tab-btn" data-tab="history">Kontakthistorie</button>
             <button class="tab-btn" data-tab="sms">SMS</button>
@@ -4877,6 +4883,15 @@
                 <h3>Profile</h3>
                 <div id="profiles-content">
                   <p>Keine Profile geladen.</p>
+                </div>
+              </div>
+            </div>
+
+            <div id="tab-proposals" class="tab-panel" data-loaded="false">
+              <div class="profile-section">
+                <h3>Vorschläge</h3>
+                <div id="proposals-content">
+                  <p>Noch keine Vorschläge geladen.</p>
                 </div>
               </div>
             </div>
@@ -5560,6 +5575,8 @@
             await loadCustomerQuestionnaires(customer.id);
           } else if (tabName === 'profiles') {
             await loadCustomerProfiles(customer.id);
+          } else if (tabName === 'proposals') {
+            await loadCustomerProposals(customer.id);
           } else if (tabName === 'history') {
             await loadCustomerHistory(customer.id);
           }
@@ -5802,6 +5819,64 @@
         if (contentDiv) contentDiv.innerHTML = '<p>Fehler beim Laden der Profile.</p>';
       }
     }
+
+  // Lazy Loading: Vorschläge laden
+  async function loadCustomerProposals(customerId) {
+    try {
+      const res = await fetch(`/api/customers/${customerId}/proposals`);
+      if (!res.ok) throw new Error('Fehler beim Laden');
+      const items = await res.json();
+      const contentDiv = document.getElementById('proposals-content');
+      if (!contentDiv) return;
+
+      if (!items.length) {
+        contentDiv.innerHTML = '<p>Es sind noch keine Profilvorschläge vorhanden.</p>';
+        return;
+      }
+
+      const html = items.map(p => {
+        const uploadedAt = p.uploaded_at ? new Date(p.uploaded_at).toLocaleString('de-DE') : '-';
+        const filename = p.original_filename || 'Profilvorschlag';
+        const partnerName = p.partner_name || 'Unbekannter Kooperationspartner';
+        const hasFile = !!p.has_file;
+        const fileUrl = hasFile ? `/customers/${customerId}/proposals/${p.id}/file` : null;
+
+        return `
+          <div class="pdf-display" style="margin-bottom:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem;">
+              <div>
+                <strong>${filename}</strong>
+                <div style="font-size:0.8rem; color:#666;">
+                  Partner: ${partnerName}<br>
+                  Hochgeladen: ${uploadedAt}
+                </div>
+              </div>
+              <div class="pdf-actions" style="display:flex; gap:0.5rem; align-items:center;">
+                ${
+                  hasFile && fileUrl
+                    ? `
+                        <a href="${fileUrl}" target="_blank" class="btn-coral">
+                          <i class="fas fa-external-link-alt"></i> Öffnen
+                        </a>
+                        <a href="${fileUrl}" download="${filename}" class="btn-coral">
+                          <i class="fas fa-download"></i> Download
+                        </a>
+                      `
+                    : `<span style="color:#e74c3c; font-size:0.85rem;">Keine Datei vorhanden</span>`
+                }
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      contentDiv.innerHTML = html;
+    } catch (e) {
+      console.error('Fehler beim Laden der Vorschläge:', e);
+      const contentDiv = document.getElementById('proposals-content');
+      if (contentDiv) contentDiv.innerHTML = '<p>Fehler beim Laden der Vorschläge.</p>';
+    }
+  }
 
     // Lazy Loading: Kontakthistorie laden
     async function loadCustomerHistory(customerId) {

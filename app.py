@@ -15,7 +15,7 @@ import requests
 # DocuSign imports (vereinfacht - nur für Typen)
 # from docusign_esign import ApiClient, EnvelopesApi, EnvelopeDefinition, Document, Signer, SignHere, Tabs, Recipients
 import uuid
-from models import db, User, Anfrage, TeamNote, GmailCredential, ExchangeCredential, PdfDocument, Customer, Kooperationspartner, Caregiver, Dienstleistungsvertrag, Kooperationsvertrag, CustomerNote, FollowUp, Invoice
+from models import db, User, Anfrage, TeamNote, GmailCredential, ExchangeCredential, PdfDocument, Customer, Kooperationspartner, Caregiver, Dienstleistungsvertrag, Kooperationsvertrag, CustomerNote, FollowUp, Invoice, CustomerProposal
 from werkzeug.middleware.proxy_fix import ProxyFix
 from base64 import urlsafe_b64encode
 import base64
@@ -105,6 +105,10 @@ os.makedirs(PROFILE_EXPORT_DIR, exist_ok=True)
 # Export-Verzeichnis für Kooperationsverträge
 KOOPERATIONSVERTRAG_EXPORT_DIR = os.path.join(APP_DATA_DIR, 'exported_kooperationsvertraege')
 os.makedirs(KOOPERATIONSVERTRAG_EXPORT_DIR, exist_ok=True)
+
+# Upload-Verzeichnis für Kunden-Vorschläge (Profilvorschläge der Partner)
+PROPOSAL_UPLOAD_DIR = os.path.join(APP_DATA_DIR, 'customer_proposals')
+os.makedirs(PROPOSAL_UPLOAD_DIR, exist_ok=True)
 
 # Hinter Proxy (Railway) korrekte Host/Proto übernehmen
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -2999,7 +3003,25 @@ def create_html_email_template(content_lines, signature_html=None):
     
     # Inhalt als Tabellen-Zeilen hinzufügen
     for i, line in enumerate(content_lines):
-        if line.strip():  # Nur nicht-leere Zeilen
+        # Spezieller Platzhalter für Upload-Button in Befragungsbogen-E-Mails
+        if isinstance(line, str) and line.startswith('[[UPLOAD_BUTTON:') and line.endswith(']]'):
+            upload_url = line[len('[[UPLOAD_BUTTON:'):-2]
+            html += f"""
+                                    <tr>
+                                        <td style="padding: 24px 0 8px 0;" align="left">
+                                            <a href="{upload_url}"
+                                               style="display:inline-block; background-color:#f58060; color:#ffffff;
+                                                      padding:12px 24px; border-radius:999px;
+                                                      font-family:Arial, Helvetica, sans-serif;
+                                                      font-size:16px; text-decoration:none;">
+                                                Profilvorschläge hochladen
+                                            </a>
+                                        </td>
+                                    </tr>
+"""
+            continue
+
+        if str(line).strip():  # Nur nicht-leere Zeilen
             # Letzte Zeile hat kein padding-bottom
             padding_bottom = "0" if i == len(content_lines) - 1 else "4px"
             html += f"""
@@ -3047,6 +3069,56 @@ def create_html_email_template(content_lines, signature_html=None):
     </html>
 """
     return html
+
+
+@app.route('/upload-profiles/<token>', methods=['GET', 'POST'])
+def upload_profiles(token):
+    """Öffentliche Upload-Seite für Kooperationspartner zum Hochladen von Profilvorschlägen."""
+    proposal = CustomerProposal.query.filter_by(upload_token=token).first()
+    if not proposal:
+        return "Ungültiger oder abgelaufener Upload-Link.", 404
+
+    customer = Customer.query.get(proposal.customer_id)
+    partner = Kooperationspartner.query.get(proposal.partner_id)
+
+    error = None
+    success = None
+
+    if request.method == 'POST':
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            error = "Bitte wählen Sie eine Datei aus."
+        else:
+            filename = secure_filename(file.filename)
+            allowed_ext = ('.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png')
+            if not filename.lower().endswith(allowed_ext):
+                error = "Ungültiges Dateiformat. Erlaubt sind PDF, DOC, DOCX, JPG, JPEG, PNG."
+            else:
+                customer_folder = os.path.join(
+                    PROPOSAL_UPLOAD_DIR,
+                    f"customer_{proposal.customer_id}",
+                    f"partner_{proposal.partner_id}",
+                )
+                os.makedirs(customer_folder, exist_ok=True)
+                ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+                stored_name = f"{ts}_{filename}"
+                abs_path = os.path.join(customer_folder, stored_name)
+                file.save(abs_path)
+
+                proposal.original_filename = filename
+                # relativ zu APP_DATA_DIR speichern
+                proposal.stored_filename = os.path.relpath(abs_path, APP_DATA_DIR)
+                proposal.uploaded_at = datetime.datetime.utcnow()
+                db.session.commit()
+                success = "Profilvorschlag wurde erfolgreich hochgeladen."
+
+    return render_template(
+        'upload_profiles.html',
+        customer=customer,
+        partner=partner,
+        error=error,
+        success=success,
+    )
 
 # Hilfsfunktion: Signatur für eine E-Mail-Adresse abrufen
 def get_signature_for_email(email_address, username=None):
@@ -3624,13 +3696,11 @@ def send_offer():
             body = data.get('body') or (
                 "Sehr geehrte Damen und Herren,\n\n"
                 f"anbei finden Sie den Bedarfsfragebogen eines neuen Kunden (Kunden-ID: {customer_id}).\n\n"
-                "Viele Grüße"
             )
         else:
             body = data.get('body') or (
                 "Sehr geehrte Damen und Herren,\n\n"
                 "anbei finden Sie den Bedarfsfragebogen eines neuen Kunden.\n\n"
-                "Viele Grüße"
             )
     else:
         body = data.get('body') or (
@@ -3719,21 +3789,18 @@ def send_offer():
         else:
             actual_to_email = to_email
         
-        # Prepare text and HTML bodies mit Signatur (OHNE BCC-Info für alle)
-        body_text_final = body
-        
-        # HTML-Tabellen-basiertes Template erstellen
+        # Prepare text und HTML-Bodies (Basistext ohne Upload-Link, wird unten für Partner-E-Mails angepasst)
+        base_body_text = body
         # Body in Zeilen aufteilen
-        body_lines = body.split(newline)
+        body_lines = base_body_text.split(newline)
         # Leere Zeilen am Anfang/Ende entfernen, aber innere Leerzeilen behalten
         while body_lines and not body_lines[0].strip():
             body_lines.pop(0)
         while body_lines and not body_lines[-1].strip():
             body_lines.pop()
-        
         # HTML-Template mit Tabellen erstellen
-        body_html_final = create_html_email_template(body_lines, signature if signature else None)
-        
+        base_body_html = create_html_email_template(body_lines, signature if signature else None)
+
         if signature:
             # Für Plain-Text: HTML-Tags entfernen
             import re
@@ -3741,18 +3808,16 @@ def send_offer():
             signature_text = re.sub(r'<[^>]+>', '', signature)
             signature_text = unescape(signature_text)
             signature_text = signature_text.replace(newline, ' ').strip()
-            body_text_final = f"{body}{newline}{newline}{signature_text}"
+            base_body_text_with_sig = f"{base_body_text}{newline}{newline}{signature_text}"
             print(f"✅ Füge Signatur hinzu (Länge: {len(signature)} Zeichen)")
         else:
             print(f"⚠️ Keine Signatur vorhanden, verwende nur Body")
-        
-        if signature:
-            print(f"✅ HTML-Body mit Signatur erstellt (Gesamtlänge: {len(body_html_final)} Zeichen)")
+            base_body_text_with_sig = base_body_text
 
-        # Text und HTML Versionen (für alle Empfänger)
-        text_part = MIMEText(body_text_final, 'plain', 'utf-8')
-        html_part = MIMEText(body_html_final, 'html', 'utf-8')
-        
+        # Text und HTML Versionen (Standardfall ohne speziellen Upload-Button)
+        text_part = MIMEText(base_body_text_with_sig, 'plain', 'utf-8')
+        html_part = MIMEText(base_body_html, 'html', 'utf-8')
+
         # Alternative part (text + HTML) - enthält bereits die Signatur
         alternative = MIMEMultipart('alternative')
         alternative.attach(text_part)
@@ -3799,9 +3864,9 @@ def send_offer():
 """
             
             # BCC-Info in das HTML-Template einfügen (vor dem schließenden </table>)
-            body_team_text = body_text_final + bcc_info_text
+            body_team_text = base_body_text_with_sig + bcc_info_text
             # HTML: BCC-Info vor dem schließenden </table> des Inhalts einfügen
-            body_team_html = body_html_final.replace('</table>', bcc_info_html + '</table>', 1)
+            body_team_html = base_body_html.replace('</table>', bcc_info_html + '</table>', 1)
             
             text_part_team = MIMEText(body_team_text, 'plain', 'utf-8')
             html_part_team = MIMEText(body_team_html, 'html', 'utf-8')
@@ -3858,14 +3923,91 @@ def send_offer():
             server.send_message(message_team)
             print(f"✅ E-Mail an {actual_to_email} gesendet (mit Liste der {len(questionnaire_bcc_emails)} Partner)")
             
-            # Separate E-Mails an jeden Partner senden (ohne BCC-Info, jeder sieht nur seine eigene)
+            # Separate E-Mails an jeden Partner senden (mit individuellem Upload-Link und Button)
+            partners_data = data.get('partners', [])
+            partners_by_email = {p.get('email'): p for p in partners_data if p.get('email')}
+
             for partner_email in questionnaire_bcc_emails:
+                partner_obj = Kooperationspartner.query.filter(
+                    db.func.lower(Kooperationspartner.email) == (partner_email or '').lower()
+                ).first()
+                partner_id = partner_obj.id if partner_obj else None
+
+                # Kunden-ID für Verknüpfung holen (falls vorhanden)
+                form_fields = data.get('form_fields', {})
+                customer_id_raw = form_fields.get('kunden_id') or None
+                customer_id_int = None
+                try:
+                    customer_id_int = int(customer_id_raw) if customer_id_raw else None
+                except Exception:
+                    customer_id_int = None
+
+                # Upload-Token nur erzeugen, wenn wir Kunde und Partner zuordnen können
+                upload_url = None
+                if customer_id_int and partner_id:
+                    import secrets
+                    token = secrets.token_urlsafe(32)
+                    proposal = CustomerProposal(
+                        customer_id=customer_id_int,
+                        partner_id=partner_id,
+                        upload_token=token,
+                    )
+                    db.session.add(proposal)
+                    db.session.flush()
+                    upload_url = url_for('upload_profiles', token=token, _external=True)
+                    print(f"✅ Upload-Link für Partner {partner_email} / Kunde {customer_id_int}: {upload_url}")
+
+                # Partner-spezifischen Body aufbauen (inkl. Upload-Button, falls URL vorhanden)
+                partner_body_text = base_body_text_with_sig
+                partner_body_html = base_body_html
+                if upload_url:
+                    # Falls der Nutzer einen eigenen Text eingegeben hat, übernehmen wir diesen
+                    original_body = data.get('body') or body or ""
+                    # Plain-Text: ursprünglicher Text + Hinweis & Direktlink
+                    # "Viele Grüße" bleibt ausschließlich im ursprünglichen Body bzw. unter dem Button im HTML-Template
+                    partner_body_text = (
+                        f"{original_body.rstrip()}\n\n"
+                        f"Direktlink zum Hochladen der Profilvorschläge: {upload_url}"
+                    )
+                    if signature:
+                        # Signatur anhängen wie oben
+                        import re
+                        from html import unescape
+                        signature_text = re.sub(r'<[^>]+>', '', signature)
+                        signature_text = unescape(signature_text)
+                        signature_text = signature_text.replace(newline, ' ').strip()
+                        partner_body_text = f"{partner_body_text}{newline}{newline}{signature_text}"
+
+                    # HTML-Button über Platzhalter in die Zeilen einbauen
+                    # Ausgangspunkt ist der (ggf. individuelle) Body-Text
+                    original_lines = (original_body or "").split(newline)
+                    # Leere Zeilen am Anfang/Ende entfernen
+                    while original_lines and not original_lines[0].strip():
+                        original_lines.pop(0)
+                    while original_lines and not original_lines[-1].strip():
+                        original_lines.pop()
+
+                    partner_lines = original_lines + [
+                        "",
+                        f"[[UPLOAD_BUTTON:{upload_url}]]",
+                        "",
+                        "Viele Grüße",
+                    ]
+                    partner_body_html = create_html_email_template(partner_lines, signature if signature else None)
+
+                text_part_partner = MIMEText(partner_body_text, 'plain', 'utf-8')
+                html_part_partner = MIMEText(partner_body_html, 'html', 'utf-8')
+
+                alternative_partner = MIMEMultipart('alternative')
+                alternative_partner.attach(text_part_partner)
+                alternative_partner.attach(html_part_partner)
+
                 message_partner = MIMEMultipart('mixed')
                 message_partner['Subject'] = subject
                 message_partner['From'] = f"HelpCare <{smtp_username}>"
                 message_partner['To'] = partner_email
                 # KEIN BCC-Feld - jeder Partner bekommt seine eigene E-Mail
-                message_partner.attach(alternative)  # Normale Body ohne BCC-Info
+                message_partner.attach(alternative_partner)
                 
                 pdf_attachment_partner = MIMEBase('application', 'pdf')
                 pdf_attachment_partner.set_payload(pdf_data)
@@ -5831,6 +5973,49 @@ def delete_profile(customer_id, profile_index):
 
     db.session.commit()
     return jsonify({"success": True, "remaining": len(profiles)})
+
+
+@app.route('/api/customers/<int:customer_id>/proposals')
+def api_customer_proposals(customer_id):
+    """Liefert alle hochgeladenen Profilvorschläge für einen Kunden."""
+    if 'user_id' not in session and 'user' not in session:
+        return jsonify({'error': 'Nicht eingeloggt'}), 401
+
+    proposals = CustomerProposal.query.filter_by(customer_id=customer_id).order_by(
+        CustomerProposal.uploaded_at.desc().nullslast()
+    ).all()
+
+    result = []
+    for p in proposals:
+        partner = Kooperationspartner.query.get(p.partner_id)
+        has_file = bool(p.stored_filename)
+        result.append({
+            'id': p.id,
+            'partner_id': p.partner_id,
+            'partner_name': partner.name if partner else None,
+            'original_filename': p.original_filename,
+            'uploaded_at': p.uploaded_at.isoformat() if p.uploaded_at else None,
+            'has_file': has_file,
+        })
+    return jsonify(result)
+
+
+@app.route('/customers/<int:customer_id>/proposals/<int:proposal_id>/file')
+def download_customer_proposal(customer_id, proposal_id):
+    """Liefert eine hochgeladene Vorschlags-PDF für interne Nutzer."""
+    if 'user_id' not in session and 'user' not in session:
+        # Uploads sind öffentlich, Downloads aber nur für angemeldete Nutzer im Dashboard
+        return jsonify({'error': 'Nicht eingeloggt'}), 401
+
+    proposal = CustomerProposal.query.filter_by(id=proposal_id, customer_id=customer_id).first_or_404()
+    if not proposal.stored_filename:
+        return jsonify({'error': 'Keine Datei hinterlegt'}), 404
+
+    abs_path = os.path.join(APP_DATA_DIR, proposal.stored_filename)
+    if not os.path.exists(abs_path):
+        return jsonify({'error': 'Datei auf dem Server nicht gefunden'}), 404
+
+    return send_file(abs_path, as_attachment=False, download_name=proposal.original_filename or 'Vorschlag.pdf')
 
 # Kooperationspartner API
 @app.route('/api/kooperationspartner', methods=['GET'])
